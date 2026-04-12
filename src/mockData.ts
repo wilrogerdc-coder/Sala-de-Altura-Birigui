@@ -21,6 +21,7 @@ export const initialSettings: AppSettings = {
   theme: 'light',
   devInfo: 'Desenvolvido por: Equipe de Tecnologia CBPMESP\nVersão: 2.0.0\nContato: suporte@bombeiros.sp.gov.br',
   systemMode: 'local',
+  googleSheetsUrl: 'https://script.google.com/macros/s/AKfycbz8KdGmeUJbxD5Heb__3bEIpoYpDzwo8MXzVLfBeW3atJpOL8yudJ2QvcvWgR0wEC2Y/exec',
   hierarchy: {
     matrizName: '20º Grupamento de Bombeiros',
     subunitName: '1º SGB',

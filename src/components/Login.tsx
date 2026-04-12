@@ -23,9 +23,9 @@ export function Login({ users, onLogin, unitLogo, unitName, bgImage }: LoginProp
   // Debug para ajudar o usuário a ver quem está cadastrado
   useEffect(() => {
     if (users.length > 0) {
-      console.log('SGA - Usuários disponíveis:', users.map(u => u.username).join(', '));
+      console.log('SALA DE ALTURA - Usuários disponíveis:', users.map(u => u.username).join(', '));
     } else {
-      console.warn('SGA - Nenhum usuário carregado no componente de Login!');
+      console.warn('SALA DE ALTURA - Nenhum usuário carregado no componente de Login!');
     }
   }, [users]);
 
@@ -34,7 +34,7 @@ export function Login({ users, onLogin, unitLogo, unitName, bgImage }: LoginProp
     const cleanUsername = username.trim().toLowerCase();
     const cleanPassword = password.trim();
     
-    console.log(`SGA - Tentativa de login: [${cleanUsername}]`);
+    console.log(`SALA DE ALTURA - Tentativa de login: [${cleanUsername}]`);
     
     // Fallback de emergência caso o estado esteja vazio (hardcoded para garantir acesso)
     if (cleanUsername === 'admin' && cleanPassword === '123') {
@@ -56,7 +56,7 @@ export function Login({ users, onLogin, unitLogo, unitName, bgImage }: LoginProp
       toast.success(`Bem-vindo, ${user.name}!`);
     } else {
       toast.error('Usuário ou senha incorretos.');
-      console.error('SGA - Falha no login para:', cleanUsername);
+      console.error('SALA DE ALTURA - Falha no login para:', cleanUsername);
       if (users.length === 0) {
         toast.error('Erro crítico: Banco de usuários vazio.');
       }
@@ -84,7 +84,7 @@ export function Login({ users, onLogin, unitLogo, unitName, bgImage }: LoginProp
           </div>
           <div className="space-y-1">
             <CardTitle className="text-2xl font-bold">{unitName}</CardTitle>
-            <CardDescription>SGA - Sistema de Gestão de Altura</CardDescription>
+            <CardDescription>SALA DE ALTURA - Sistema de Gestão de Altura</CardDescription>
           </div>
         </CardHeader>
         <CardContent>

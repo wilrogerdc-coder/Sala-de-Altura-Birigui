@@ -86,10 +86,6 @@ export function Settings({
   const googleSheetsUrl = safeSettings.googleSheetsUrl || '';
 
   const handleSyncNow = async () => {
-    if (!googleSheetsUrl) {
-      toast.error('Insira a URL do Google Sheets primeiro.');
-      return;
-    }
     toast.promise(
       async () => {
         const sheetsService = new GoogleSheetsService(googleSheetsUrl);
@@ -113,7 +109,7 @@ export function Settings({
         success: 'Dados sincronizados com sucesso!',
         error: (err) => {
           const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('fetch')) return 'Erro de Rede: Verifique a URL e as permissões.';
+          if (msg.includes('fetch')) return 'Erro de Rede: Verifique a conexão com o banco de dados.';
           return `Erro ao sincronizar: ${msg}`;
         }
       }
@@ -131,7 +127,7 @@ export function Settings({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SGA_Export_${unitName.replace(/\s+/g, '_')}.json`;
+    a.download = `SALA_DE_ALTURA_Export_${unitName.replace(/\s+/g, '_')}.json`;
     a.click();
     addLog('Exportação de Dados', 'Arquivo de exportação gerado para a Matriz.');
     toast.success('Dados exportados com sucesso!');
@@ -336,10 +332,11 @@ export function Settings({
                     id="gsUrl" 
                     placeholder="https://script.google.com/macros/s/.../exec"
                     value={googleSheetsUrl}
-                    onChange={(e) => setSettings({ ...safeSettings, googleSheetsUrl: e.target.value } as AppSettings)}
+                    readOnly
+                    className="bg-gray-100 cursor-not-allowed"
                   />
-                  <p className="text-[10px] text-muted-foreground">
-                    Insira a URL do Web App gerada no Google Apps Script para habilitar a sincronização em nuvem.
+                  <p className="text-[10px] text-[#B22222] font-bold uppercase">
+                    URL do Banco de Dados Fixa do Sistema
                   </p>
                 </div>
                 <Button 

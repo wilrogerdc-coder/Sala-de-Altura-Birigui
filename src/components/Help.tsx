@@ -48,7 +48,7 @@ export function Help({ settings, setSettings, currentUser }: HelpProps) {
               <Book className="h-5 w-5 text-[#B22222]" />
               Guia de Utilização
             </CardTitle>
-            <CardDescription>Como operar as principais funções do SGA.</CardDescription>
+            <CardDescription>Como operar as principais funções da SALA DE ALTURA.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <div className="space-y-2">

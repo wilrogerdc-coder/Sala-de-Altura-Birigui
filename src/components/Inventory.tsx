@@ -212,7 +212,7 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SGA_Materiais_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `SALA_DE_ALTURA_Materiais_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     addLog('Exportação de Materiais', 'Lista de materiais exportada.');
     toast.success('Lista de materiais exportada!');

@@ -227,7 +227,7 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
                     />
                   )}
                   <div>
-                    <h2 className="text-2xl font-bold uppercase tracking-tight">{settings.hierarchy?.matrizName || 'SGA'}</h2>
+                    <h2 className="text-2xl font-bold uppercase tracking-tight">{settings.hierarchy?.matrizName || 'SALA DE ALTURA'}</h2>
                     <h3 className="text-xl font-semibold">{settings.unitName}</h3>
                     <p className="text-sm italic">{settings.hierarchy?.subunitName} - {settings.hierarchy?.postName}</p>
                   </div>
@@ -275,7 +275,7 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
                 
                 <div className="flex justify-between items-end mt-12">
                   <div className="text-xs text-gray-500">
-                    <p>* Este é um documento gerado automaticamente pelo sistema SGA.</p>
+                    <p>* Este é um documento gerado automaticamente pelo sistema SALA DE ALTURA.</p>
                     <p>* As informações refletem o estado do inventário em tempo real.</p>
                   </div>
                   <p className="text-sm font-bold italic">Página 1 de 1</p>
@@ -295,7 +295,7 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
               </div>
 
               <div className="absolute bottom-8 left-0 right-0 text-center text-[10px] text-gray-400">
-                SGA - Sistema de Gestão de Armazenamento © {new Date().getFullYear()}
+                SALA DE ALTURA - Sistema de Gestão de Armazenamento © {new Date().getFullYear()}
               </div>
             </div>
           </div>

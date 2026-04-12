@@ -18,7 +18,7 @@ Crie uma nova Planilha Google e adicione as seguintes abas (páginas):
 
 ```javascript
 /**
- * SGA - Google Sheets Database Script
+ * SALA DE ALTURA - Google Sheets Database Script
  * Versão: 1.0.0
  */
 
@@ -114,7 +114,7 @@ function doPost(e) {
 ## 3. Implantar como Web App (CRÍTICO)
 1. No editor do Apps Script, clique em **Implantar > Nova implantação**.
 2. Selecione o tipo **App da Web**.
-3. Em "Descrição", coloque "SGA Database".
+3. Em "Descrição", coloque "SALA DE ALTURA Database".
 4. Em "Executar como", selecione **Você** (seu e-mail).
 5. Em "Quem tem acesso", selecione **Qualquer pessoa** (Anyone). 
    - **ATENÇÃO:** Se você selecionar "Qualquer pessoa com conta Google", o sistema NÃO funcionará corretamente dentro do AI Studio devido a restrições de redirecionamento de login. Deve ser **Qualquer pessoa** (anônimo).
@@ -124,7 +124,7 @@ function doPost(e) {
 
 > **Dica de Erro de Rede:** Se você receber "NetworkError", verifique se o passo 5 foi feito corretamente. Se você já implantou, clique em **Implantar > Gerenciar implantações**, edite a versão atual e mude para **Qualquer pessoa**.
 
-## 4. Configurar no SGA
-1. No SGA, vá em **Configurações**.
-2. Insira a URL copiada no campo **URL do Banco de Dados (Google Sheets)**.
-3. Clique em **Sincronizar**.
+## 4. Sincronização Automática
+A SALA DE ALTURA já está configurada com a URL fixa do banco de dados. Assim que você implantar o script como Web App (passo 3), o sistema começará a sincronizar os dados automaticamente.
+
+Você pode forçar uma sincronização manual em **Configurações > Sincronizar Agora**.

@@ -36,60 +36,69 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'offline'>('offline');
   
-  const [materials, setMaterials] = useLocalStorage<Material[]>('sga_materials', initialMaterials);
-  const [locations, setLocations] = useLocalStorage<Location[]>('sga_locations', initialLocations);
-  const [logs, setLogs] = useLocalStorage<Log[]>('sga_logs', []);
-  const [users, setUsers] = useLocalStorage<User[]>('sga_users', initialUsers);
-  const [settings, setSettings] = useLocalStorage<AppSettings>('sga_settings', initialSettings);
-  const [documents, setDocuments] = useLocalStorage<Document[]>('sga_documents', initialDocuments);
-  const [loans, setLoans] = useLocalStorage<Loan[]>('sga_loans', initialLoans);
+  const FIXED_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbz8KdGmeUJbxD5Heb__3bEIpoYpDzwo8MXzVLfBeW3atJpOL8yudJ2QvcvWgR0wEC2Y/exec';
+  
+  const [materials, setMaterials] = useLocalStorage<Material[]>('saladealtura_materials', initialMaterials);
+  const [locations, setLocations] = useLocalStorage<Location[]>('saladealtura_locations', initialLocations);
+  const [logs, setLogs] = useLocalStorage<Log[]>('saladealtura_logs', []);
+  const [users, setUsers] = useLocalStorage<User[]>('saladealtura_users', initialUsers);
+  const [settings, setSettings] = useLocalStorage<AppSettings>('saladealtura_settings', initialSettings);
+  const [documents, setDocuments] = useLocalStorage<Document[]>('saladealtura_documents', initialDocuments);
+  const [loans, setLoans] = useLocalStorage<Loan[]>('saladealtura_loans', initialLoans);
 
-  const sheetsService = new GoogleSheetsService(settings.googleSheetsUrl || '');
+  const sheetsService = new GoogleSheetsService(FIXED_SHEETS_URL);
+
+  // Atualiza o título da aba do navegador
+  useEffect(() => {
+    document.title = 'SALA DE ALTURA';
+    
+    // Garante que a URL do banco de dados esteja sempre correta nas configurações locais
+    if (settings.googleSheetsUrl !== FIXED_SHEETS_URL) {
+      setSettings({ ...settings, googleSheetsUrl: FIXED_SHEETS_URL });
+    }
+  }, []);
 
   // Sincronização Inicial com Google Sheets
   useEffect(() => {
-    if (settings.googleSheetsUrl) {
-      const loadData = async () => {
-        setDbStatus('syncing');
-        try {
-          const data = await sheetsService.fetchAllData();
-          if (data) {
-            if (data.Materials.length > 0) setMaterials(data.Materials);
-            if (data.Locations.length > 0) setLocations(data.Locations);
-            if (data.Users.length > 0) setUsers(data.Users);
-            if (data.Settings.length > 0) {
-              // Mantém a URL atual do banco de dados se a da nuvem estiver vazia ou for diferente
-              const cloudSettings = data.Settings[0];
-              setSettings({
-                ...settings,
-                ...cloudSettings,
-                googleSheetsUrl: settings.googleSheetsUrl // Preserva a URL local que permitiu a conexão
-              });
-            }
-            if (data.Documents.length > 0) setDocuments(data.Documents);
-            if (data.Loans.length > 0) setLoans(data.Loans);
-            if (data.Logs.length > 0) setLogs(data.Logs);
-            setDbStatus('connected');
-            toast.success('Dados sincronizados com Google Drive');
+    const loadData = async () => {
+      setDbStatus('syncing');
+      try {
+        const data = await sheetsService.fetchAllData();
+        if (data) {
+          if (data.Materials.length > 0) setMaterials(data.Materials);
+          if (data.Locations.length > 0) setLocations(data.Locations);
+          if (data.Users.length > 0) setUsers(data.Users);
+          if (data.Settings.length > 0) {
+            // Sincroniza as configurações da nuvem, mas mantém a URL fixa
+            const cloudSettings = data.Settings[0];
+            setSettings({
+              ...settings,
+              ...cloudSettings,
+              googleSheetsUrl: FIXED_SHEETS_URL
+            });
           }
-        } catch (error) {
-          setDbStatus('error');
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          if (errorMsg.includes('fetch')) {
-            toast.error('Erro de Rede: Verifique a URL do Google Sheets e se a implantação está como "Qualquer pessoa".');
-          } else {
-            toast.error(`Erro ao sincronizar: ${errorMsg}`);
-          }
+          if (data.Documents.length > 0) setDocuments(data.Documents);
+          if (data.Loans.length > 0) setLoans(data.Loans);
+          if (data.Logs.length > 0) setLogs(data.Logs);
+          setDbStatus('connected');
+          toast.success('Dados sincronizados com Google Drive');
         }
-      };
-      loadData();
-    }
-  }, [settings.googleSheetsUrl]);
+      } catch (error) {
+        setDbStatus('error');
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes('fetch')) {
+          toast.error('Erro de Rede: Verifique a conexão com o Google Sheets.');
+        } else {
+          toast.error(`Erro ao sincronizar: ${errorMsg}`);
+        }
+      }
+    };
+    loadData();
+  }, []); // Executa apenas na montagem inicial
 
   // Sincronização Automática ao mudar dados (Debounced ou em ações específicas)
   // Para simplificar e garantir persistência, vamos sincronizar em ações críticas ou via botão nas configurações
   const syncToCloud = async () => {
-    if (!settings.googleSheetsUrl) return;
     setDbStatus('syncing');
     const success = await sheetsService.syncAll({
       Materials: materials,
@@ -109,7 +118,7 @@ export default function App() {
     const hasCavalieri = users.some(u => u.username?.toLowerCase() === 'cavalieri');
     
     if (!hasAdmin || !hasCavalieri || users.length === 0) {
-      console.log('SGA: Restaurando usuários iniciais para garantir acesso...');
+      console.log('SALA DE ALTURA: Restaurando usuários iniciais para garantir acesso...');
       // Filtra apenas os que faltam para não duplicar
       const missingUsers = initialUsers.filter(iu => 
         !users.some(u => u.username?.toLowerCase() === iu.username.toLowerCase())
@@ -138,16 +147,12 @@ export default function App() {
     const updatedLogs = [...logs, newLog];
     setLogs(updatedLogs);
     
-    // Envia log para a nuvem se disponível
-    if (settings.googleSheetsUrl) {
-      sheetsService.addLog(newLog);
-    }
+    // Envia log para a nuvem
+    sheetsService.addLog(newLog);
   };
 
   // Auto-sincronização quando os dados mudam (Debounced)
   useEffect(() => {
-    if (!settings.googleSheetsUrl) return;
-
     const timer = setTimeout(() => {
       syncToCloud();
     }, 5000); // Sincroniza após 5 segundos de inatividade
@@ -184,7 +189,7 @@ export default function App() {
           </div>
           <div className="text-center space-y-2">
             <h1 className="text-5xl font-black text-white tracking-tighter uppercase drop-shadow-lg">
-              SGA <span className="text-[#B22222]">2.0</span>
+              SALA DE ALTURA <span className="text-[#B22222]">2.0</span>
             </h1>
             <p className="text-xl text-white/80 font-medium tracking-widest uppercase">
               {settings.unitName}
@@ -198,7 +203,7 @@ export default function App() {
           </div>
         </div>
         <div className="absolute bottom-8 left-0 right-0 text-center text-white/30 text-xs font-mono uppercase tracking-widest">
-          Sistema de Gestão de Armazenamento • CBPMESP
+          SALA DE ALTURA • CBPMESP
         </div>
       </div>
     );
@@ -290,7 +295,7 @@ export default function App() {
         <div className="md:hidden flex items-center justify-between mb-4 bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/20">
           <div className="flex items-center gap-2">
             <img src={settings.unitLogo} alt="Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-xs uppercase tracking-wider text-white">SGA</span>
+            <span className="font-bold text-xs uppercase tracking-wider text-white">SALA DE ALTURA</span>
           </div>
           <div className="flex items-center gap-3">
             {settings.googleSheetsUrl && (
@@ -336,7 +341,7 @@ export default function App() {
         {/* Footer with Developer Credits */}
         <footer className="mt-8 pt-6 border-t border-white/10 text-center text-xs text-muted-foreground/60 max-w-7xl mx-auto w-full">
           <div className="whitespace-pre-line">
-            {settings.devInfo || 'SGA - Sistema de Gestão de Armazenamento'}
+            {settings.devInfo || 'SALA DE ALTURA - Sistema de Gestão de Armazenamento'}
           </div>
           <p className="mt-2">© {new Date().getFullYear()} - Todos os direitos reservados</p>
         </footer>
