@@ -1,0 +1,5 @@
+{
+  "name": "SGA - Sistema de Gestão de Altura",
+  "description": "Sistema de gerenciamento de materiais para o departamento de salvamento em altura do Corpo de Bombeiros (CBPMESP). Controle de estoque, alocações em viaturas, relatórios e logs de acesso.",
+  "requestFramePermissions": []
+}
