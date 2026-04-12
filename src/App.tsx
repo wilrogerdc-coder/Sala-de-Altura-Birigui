@@ -57,7 +57,15 @@ export default function App() {
             if (data.Materials.length > 0) setMaterials(data.Materials);
             if (data.Locations.length > 0) setLocations(data.Locations);
             if (data.Users.length > 0) setUsers(data.Users);
-            if (data.Settings.length > 0) setSettings(data.Settings[0]);
+            if (data.Settings.length > 0) {
+              // Mantém a URL atual do banco de dados se a da nuvem estiver vazia ou for diferente
+              const cloudSettings = data.Settings[0];
+              setSettings({
+                ...settings,
+                ...cloudSettings,
+                googleSheetsUrl: settings.googleSheetsUrl // Preserva a URL local que permitiu a conexão
+              });
+            }
             if (data.Documents.length > 0) setDocuments(data.Documents);
             if (data.Loans.length > 0) setLoans(data.Loans);
             if (data.Logs.length > 0) setLogs(data.Logs);
@@ -145,7 +153,7 @@ export default function App() {
     }, 5000); // Sincroniza após 5 segundos de inatividade
 
     return () => clearTimeout(timer);
-  }, [materials, locations, users, documents, loans, settings.googleSheetsUrl]);
+  }, [materials, locations, users, documents, loans, settings]);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);

@@ -264,8 +264,8 @@ export function Settings({
               )}
             </div>
 
-            <Button className="w-full bg-[#B22222] hover:bg-[#B22222]/90" onClick={() => toast.success('Identidade visual salva!')}>
-              <Save className="mr-2 h-4 w-4" /> Salvar Alterações
+            <Button className="w-full bg-[#B22222] hover:bg-[#B22222]/90" onClick={handleSyncNow}>
+              <Save className="mr-2 h-4 w-4" /> Salvar e Sincronizar Identidade
             </Button>
           </CardContent>
         </Card>
