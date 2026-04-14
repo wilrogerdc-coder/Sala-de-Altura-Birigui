@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Shield, Lock, Eye, EyeOff } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Key, CheckCircle2 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { User } from '../types';
 import { toast } from 'sonner';
 

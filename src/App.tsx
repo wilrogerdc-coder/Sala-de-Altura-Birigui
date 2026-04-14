@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
@@ -37,6 +37,7 @@ export default function App() {
   const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'offline'>('offline');
   const [isInitialSyncComplete, setIsInitialSyncComplete] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const lastSyncDataRef = useRef<string>('');
   
   const FIXED_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbz8KdGmeUJbxD5Heb__3bEIpoYpDzwo8MXzVLfBeW3atJpOL8yudJ2QvcvWgR0wEC2Y/exec';
   
@@ -84,6 +85,18 @@ export default function App() {
         if (data.Documents.length > 0) setDocuments(data.Documents);
         if (data.Loans.length > 0) setLoans(data.Loans);
         if (data.Logs.length > 0) setLogs(data.Logs);
+        
+        // Atualiza o ref para evitar que o auto-sync dispare imediatamente após carregar
+        lastSyncDataRef.current = JSON.stringify({
+          Materials: data.Materials.length > 0 ? data.Materials : materials,
+          Locations: data.Locations.length > 0 ? data.Locations : locations,
+          Users: data.Users.length > 0 ? data.Users : users,
+          Settings: data.Settings.length > 0 ? [data.Settings[0]] : [settings],
+          Documents: data.Documents.length > 0 ? data.Documents : documents,
+          Loans: data.Loans.length > 0 ? data.Loans : loans,
+          Logs: data.Logs.length > 0 ? data.Logs : logs
+        });
+
         setDbStatus('connected');
         setIsInitialSyncComplete(true);
         toast.success('Dados sincronizados com Google Drive');
@@ -110,8 +123,7 @@ export default function App() {
   // Sincronização Automática ao mudar dados (Debounced ou em ações específicas)
   // Para simplificar e garantir persistência, vamos sincronizar em ações críticas ou via botão nas configurações
   const syncToCloud = async () => {
-    setDbStatus('syncing');
-    const success = await sheetsService.syncAll({
+    const currentData = {
       Materials: materials,
       Locations: locations,
       Users: users,
@@ -119,8 +131,21 @@ export default function App() {
       Documents: documents,
       Loans: loans,
       Logs: logs
-    });
-    setDbStatus(success ? 'connected' : 'error');
+    };
+    
+    const dataString = JSON.stringify(currentData);
+    if (dataString === lastSyncDataRef.current) {
+      return; // Evita sincronização redundante se os dados forem idênticos
+    }
+
+    setDbStatus('syncing');
+    const success = await sheetsService.syncAll(currentData);
+    if (success) {
+      lastSyncDataRef.current = dataString;
+      setDbStatus('connected');
+    } else {
+      setDbStatus('error');
+    }
   };
 
   // Sistema de Auto-Recuperação: Garante que os usuários básicos sempre existam
@@ -164,12 +189,16 @@ export default function App() {
 
   // Auto-sincronização quando os dados mudam (Debounced)
   useEffect(() => {
+    // CRÍTICO: Não sincroniza se a carga inicial não terminou
+    // Isso evita que dados antigos do localStorage sobrescrevam o banco de dados
+    if (!isInitialSyncComplete) return;
+
     const timer = setTimeout(() => {
       syncToCloud();
     }, 5000); // Sincroniza após 5 segundos de inatividade
 
     return () => clearTimeout(timer);
-  }, [materials, locations, users, documents, loans, settings]);
+  }, [materials, locations, users, documents, loans, settings, isInitialSyncComplete]);
 
   const handleLogin = (user: User) => {
     // Se o usuário mudou a senha (veio do reset), atualizamos a lista de usuários
