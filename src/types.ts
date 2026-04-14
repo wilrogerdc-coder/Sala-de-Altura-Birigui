@@ -69,9 +69,11 @@ export interface User {
   role: 'super' | 'admin' | 'operador';
   permissions: string[];
   lastAccess: string;
+  resetPasswordNextLogin?: boolean;
 }
 
 export interface AppSettings {
+  systemName: string;
   unitName: string;
   unitLogo: string;
   reportWatermark: string;

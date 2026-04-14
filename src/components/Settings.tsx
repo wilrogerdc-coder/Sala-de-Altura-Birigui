@@ -76,6 +76,7 @@ export function Settings({
 }: SettingsProps) {
   const [isResetDialogOpen, setIsResetDialogOpen] = React.useState(false);
   const safeSettings = (settings || {}) as Partial<AppSettings>;
+  const systemName = safeSettings.systemName || 'SALA DE ALTURA 2.0';
   const unitName = safeSettings.unitName || '';
   const bgImage = safeSettings.bgImage || '';
   const bgOpacity = typeof safeSettings.bgOpacity === 'number' ? safeSettings.bgOpacity : 0.15;
@@ -178,6 +179,14 @@ export function Settings({
           <CardContent className="space-y-4">
             <div className="flex gap-4 items-start">
               <div className="flex-1 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="systemName">Nome do Sistema</Label>
+                  <Input 
+                    id="systemName" 
+                    value={systemName} 
+                    onChange={(e) => setSettings({ ...safeSettings, systemName: e.target.value } as AppSettings)}
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="unitName">Nome da Unidade</Label>
                   <Input 

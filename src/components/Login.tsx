@@ -18,7 +18,11 @@ interface LoginProps {
 export function Login({ users, onLogin, unitLogo, unitName, bgImage }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetUser, setResetUser] = useState<User | null>(null);
 
   // Debug para ajudar o usuário a ver quem está cadastrado
   useEffect(() => {
@@ -48,12 +52,18 @@ export function Login({ users, onLogin, unitLogo, unitName, bgImage }: LoginProp
 
     const user = users.find(u => 
       u.username?.toLowerCase() === cleanUsername && 
-      u.password === cleanPassword
+      String(u.password) === cleanPassword
     );
     
     if (user) {
-      onLogin(user);
-      toast.success(`Bem-vindo, ${user.name}!`);
+      if (user.resetPasswordNextLogin) {
+        setResetUser(user);
+        setIsResetting(true);
+        toast.info('Sua senha expirou. Por favor, defina uma nova senha.');
+      } else {
+        onLogin(user);
+        toast.success(`Bem-vindo, ${user.name}!`);
+      }
     } else {
       toast.error('Usuário ou senha incorretos.');
       console.error('SALA DE ALTURA - Falha no login para:', cleanUsername);
@@ -63,12 +73,114 @@ export function Login({ users, onLogin, unitLogo, unitName, bgImage }: LoginProp
     }
   };
 
-  const handleResetSystem = () => {
-    if (confirm('Isso irá apagar todos os dados salvos localmente (materiais, logs, usuários) e restaurar os padrões de fábrica. Deseja continuar?')) {
-      localStorage.clear();
-      window.location.reload();
+  const handleResetPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetUser) return;
+    
+    if (newPassword.length < 3) {
+      toast.error('A nova senha deve ter pelo menos 3 caracteres.');
+      return;
     }
+    
+    if (newPassword !== confirmPassword) {
+      toast.error('As senhas não coincidem.');
+      return;
+    }
+    
+    if (newPassword === password) {
+      toast.error('A nova senha não pode ser igual à senha atual.');
+      return;
+    }
+
+    // Chama o onLogin passando o usuário com a nova senha e a flag de reset limpa
+    // O App.tsx deve cuidar de persistir isso
+    onLogin({
+      ...resetUser,
+      password: newPassword,
+      resetPasswordNextLogin: false
+    });
+    
+    toast.success('Senha alterada com sucesso!');
   };
+
+  if (isResetting && resetUser) {
+    return (
+      <div className="relative flex items-center justify-center min-h-screen bg-gray-100 overflow-hidden">
+        <div 
+          className="absolute inset-0 z-0 bg-cover bg-center"
+          style={{ backgroundImage: `url(${bgImage})`, filter: 'brightness(0.4)' }}
+        />
+        
+        <Card className="relative z-10 w-full max-w-md mx-4 shadow-2xl border-t-4 border-t-orange-500">
+          <CardHeader className="text-center space-y-4">
+            <div className="flex justify-center">
+              <div className="p-3 bg-orange-100 rounded-full text-orange-600">
+                <Key size={32} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <CardTitle className="text-2xl font-bold">Redefinir Senha</CardTitle>
+              <CardDescription>Olá {resetUser.name}, você precisa trocar sua senha para continuar.</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">Nova Senha</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    id="newPassword" 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="Mínimo 3 caracteres" 
+                    className="pl-9"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
+                <div className="relative">
+                  <CheckCircle2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    id="confirmPassword" 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="Repita a nova senha" 
+                    className="pl-9"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="showPassReset" checked={showPassword} onCheckedChange={(checked) => setShowPassword(!!checked)} />
+                <Label htmlFor="showPassReset" className="text-sm cursor-pointer">Mostrar senhas</Label>
+              </div>
+              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 h-11 text-lg font-semibold">
+                Alterar Senha e Entrar
+              </Button>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                className="w-full" 
+                onClick={() => {
+                  setIsResetting(false);
+                  setResetUser(null);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }}
+              >
+                Voltar
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex items-center justify-center min-h-screen bg-gray-100 overflow-hidden">

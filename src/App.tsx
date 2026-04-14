@@ -35,6 +35,8 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'offline'>('offline');
+  const [isInitialSyncComplete, setIsInitialSyncComplete] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   
   const FIXED_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbz8KdGmeUJbxD5Heb__3bEIpoYpDzwo8MXzVLfBeW3atJpOL8yudJ2QvcvWgR0wEC2Y/exec';
   
@@ -59,40 +61,49 @@ export default function App() {
   }, []);
 
   // Sincronização Inicial com Google Sheets
-  useEffect(() => {
-    const loadData = async () => {
-      setDbStatus('syncing');
-      try {
-        const data = await sheetsService.fetchAllData();
-        if (data) {
-          if (data.Materials.length > 0) setMaterials(data.Materials);
-          if (data.Locations.length > 0) setLocations(data.Locations);
-          if (data.Users.length > 0) setUsers(data.Users);
-          if (data.Settings.length > 0) {
-            // Sincroniza as configurações da nuvem, mas mantém a URL fixa
-            const cloudSettings = data.Settings[0];
-            setSettings({
-              ...settings,
-              ...cloudSettings,
-              googleSheetsUrl: FIXED_SHEETS_URL
-            });
-          }
-          if (data.Documents.length > 0) setDocuments(data.Documents);
-          if (data.Loans.length > 0) setLoans(data.Loans);
-          if (data.Logs.length > 0) setLogs(data.Logs);
-          setDbStatus('connected');
-          toast.success('Dados sincronizados com Google Drive');
+  const loadData = async () => {
+    setDbStatus('syncing');
+    setSyncError(null);
+    try {
+      const data = await sheetsService.fetchAllData();
+      if (data) {
+        if (data.Materials.length > 0) setMaterials(data.Materials);
+        if (data.Locations.length > 0) setLocations(data.Locations);
+        if (data.Users.length > 0) {
+          console.log('SALA DE ALTURA - Usuários carregados da nuvem:', data.Users.length);
+          setUsers(data.Users);
         }
-      } catch (error) {
-        setDbStatus('error');
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        if (errorMsg.includes('fetch')) {
-          toast.error('Erro de Rede: Verifique a conexão com o Google Sheets.');
-        } else {
-          toast.error(`Erro ao sincronizar: ${errorMsg}`);
+        if (data.Settings.length > 0) {
+          const cloudSettings = data.Settings[0];
+          setSettings({
+            ...settings,
+            ...cloudSettings,
+            googleSheetsUrl: FIXED_SHEETS_URL
+          });
         }
+        if (data.Documents.length > 0) setDocuments(data.Documents);
+        if (data.Loans.length > 0) setLoans(data.Loans);
+        if (data.Logs.length > 0) setLogs(data.Logs);
+        setDbStatus('connected');
+        setIsInitialSyncComplete(true);
+        toast.success('Dados sincronizados com Google Drive');
+      } else {
+        setIsInitialSyncComplete(true);
       }
-    };
+    } catch (error) {
+      setDbStatus('error');
+      setIsInitialSyncComplete(true);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setSyncError(errorMsg);
+      if (errorMsg.includes('fetch')) {
+        toast.error('Erro de Rede: Verifique a conexão com o Google Sheets.');
+      } else {
+        toast.error(`Erro ao sincronizar: ${errorMsg}`);
+      }
+    }
+  };
+
+  useEffect(() => {
     loadData();
   }, []); // Executa apenas na montagem inicial
 
@@ -161,8 +172,15 @@ export default function App() {
   }, [materials, locations, users, documents, loans, settings]);
 
   const handleLogin = (user: User) => {
+    // Se o usuário mudou a senha (veio do reset), atualizamos a lista de usuários
+    const existingUser = users.find(u => u.id === user.id);
+    if (existingUser && (existingUser.password !== user.password || existingUser.resetPasswordNextLogin !== user.resetPasswordNextLogin)) {
+      const updatedUsers = users.map(u => u.id === user.id ? user : u);
+      setUsers(updatedUsers);
+      addLog('Redefinição de Senha', `O usuário ${user.name} redefiniu sua senha.`);
+    }
+    
     setCurrentUser(user);
-    // Log de acesso removido para manter o sistema limpo conforme solicitação
   };
 
   const handleLogout = () => {
@@ -177,7 +195,13 @@ export default function App() {
     return (
       <div 
         className="relative h-screen w-full flex flex-col items-center justify-center cursor-pointer overflow-hidden bg-black"
-        onClick={() => setShowLogin(true)}
+        onClick={() => {
+          if (isInitialSyncComplete) {
+            setShowLogin(true);
+          } else {
+            toast.info('Aguarde a sincronização inicial do banco de dados...');
+          }
+        }}
       >
         <div 
           className="absolute inset-0 z-0 bg-cover bg-center opacity-40 transition-transform duration-10000 hover:scale-110"
@@ -189,17 +213,45 @@ export default function App() {
           </div>
           <div className="text-center space-y-2">
             <h1 className="text-5xl font-black text-white tracking-tighter uppercase drop-shadow-lg">
-              SALA DE ALTURA <span className="text-[#B22222]">2.0</span>
+              {settings.systemName || 'SALA DE ALTURA'}
             </h1>
             <p className="text-xl text-white/80 font-medium tracking-widest uppercase">
               {settings.unitName}
             </p>
           </div>
           <div className="flex flex-col items-center gap-4 mt-8">
-            <div className="flex items-center gap-2 text-white/60 animate-pulse">
-              <MousePointer2 size={20} />
-              <span className="text-sm font-bold uppercase tracking-[0.3em]">Clique para Iniciar</span>
-            </div>
+            {!isInitialSyncComplete ? (
+              <div className="flex flex-col items-center gap-3">
+                <RefreshCw size={32} className="text-white/60 animate-spin" />
+                <span className="text-sm font-bold uppercase tracking-[0.3em] text-white/60">Sincronizando Banco de Dados...</span>
+              </div>
+            ) : syncError ? (
+              <div className="flex flex-col items-center gap-3">
+                <WifiOff size={32} className="text-red-500/60" />
+                <span className="text-sm font-bold uppercase tracking-[0.3em] text-red-500/60">Erro na Sincronização</span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="mt-2 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsInitialSyncComplete(false);
+                    loadData();
+                  }}
+                >
+                  Tentar Novamente
+                </Button>
+                <div className="flex items-center gap-2 text-white/40 mt-4 animate-pulse">
+                  <MousePointer2 size={16} />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em]">Clique para entrar offline</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-white/60 animate-pulse">
+                <MousePointer2 size={20} />
+                <span className="text-sm font-bold uppercase tracking-[0.3em]">Clique para Iniciar</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="absolute bottom-8 left-0 right-0 text-center text-white/30 text-xs font-mono uppercase tracking-widest">
@@ -295,7 +347,7 @@ export default function App() {
         <div className="md:hidden flex items-center justify-between mb-4 bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/20">
           <div className="flex items-center gap-2">
             <img src={settings.unitLogo} alt="Logo" className="w-8 h-8 object-contain" />
-            <span className="font-bold text-xs uppercase tracking-wider text-white">SALA DE ALTURA</span>
+            <span className="font-bold text-xs uppercase tracking-wider text-white">{settings.systemName || 'SALA DE ALTURA'}</span>
           </div>
           <div className="flex items-center gap-3">
             {settings.googleSheetsUrl && (

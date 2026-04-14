@@ -12,6 +12,7 @@ export const initialUsers: User[] = [
 ];
 
 export const initialSettings: AppSettings = {
+  systemName: 'SALA DE ALTURA 2.0',
   unitName: '1º Grupamento de Bombeiros - SP',
   unitLogo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Bras%C3%A3o_do_Corpo_de_Bombeiros_da_Pol%C3%ADcia_Militar_do_Estado_de_S%C3%A3o_Paulo.svg/1200px-Bras%C3%A3o_do_Corpo_de_Bombeiros_da_Pol%C3%ADcia_Militar_do_Estado_de_S%C3%A3o_Paulo.svg.png',
   reportWatermark: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Bras%C3%A3o_do_Corpo_de_Bombeiros_da_Pol%C3%ADcia_Militar_do_Estado_de_S%C3%A3o_Paulo.svg/1200px-Bras%C3%A3o_do_Corpo_de_Bombeiros_da_Pol%C3%ADcia_Militar_do_Estado_de_S%C3%A3o_Paulo.svg.png',

@@ -67,7 +67,8 @@ export function Users({ users, setUsers, currentUser, addLog }: UsersProps) {
     name: '',
     username: '',
     password: '',
-    role: 'operador' as 'admin' | 'operador'
+    role: 'operador' as 'admin' | 'operador',
+    resetPasswordNextLogin: false
   });
 
   const allPermissions = [
@@ -128,6 +129,7 @@ export function Users({ users, setUsers, currentUser, addLog }: UsersProps) {
         username: formData.username,
         password: formData.password || u.password,
         role: formData.role,
+        resetPasswordNextLogin: formData.resetPasswordNextLogin,
         permissions: formData.role === 'admin' 
           ? ['dashboard', 'inventory', 'allocations', 'loans', 'documents', 'reports', 'settings', 'help']
           : ['dashboard', 'inventory', 'allocations', 'loans', 'documents', 'help']
@@ -142,6 +144,7 @@ export function Users({ users, setUsers, currentUser, addLog }: UsersProps) {
         username: formData.username,
         password: formData.password,
         role: formData.role,
+        resetPasswordNextLogin: formData.resetPasswordNextLogin,
         permissions: formData.role === 'admin' 
           ? ['dashboard', 'inventory', 'allocations', 'loans', 'documents', 'reports', 'settings', 'help']
           : ['dashboard', 'inventory', 'allocations', 'loans', 'documents', 'help'],
@@ -153,7 +156,7 @@ export function Users({ users, setUsers, currentUser, addLog }: UsersProps) {
     }
     setIsDialogOpen(false);
     setEditingUser(null);
-    setFormData({ name: '', username: '', password: '', role: 'operador' });
+    setFormData({ name: '', username: '', password: '', role: 'operador', resetPasswordNextLogin: false });
   };
 
   const deleteUser = (id: string) => {
@@ -176,7 +179,7 @@ export function Users({ users, setUsers, currentUser, addLog }: UsersProps) {
         </div>
         <Button className="bg-[#B22222] hover:bg-[#B22222]/90" onClick={() => {
           setEditingUser(null);
-          setFormData({ name: '', username: '', password: '', role: 'operador' });
+          setFormData({ name: '', username: '', password: '', role: 'operador', resetPasswordNextLogin: false });
           setIsDialogOpen(true);
         }}>
           <Plus className="mr-2 h-4 w-4" /> Novo Usuário
@@ -218,6 +221,21 @@ export function Users({ users, setUsers, currentUser, addLog }: UsersProps) {
                     <div className="grid gap-2">
                       <Label htmlFor="pass">Senha</Label>
                       <Input id="pass" type="password" placeholder={editingUser ? 'Deixe em branco para manter' : ''} value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 p-2 border rounded-lg bg-orange-50 border-orange-200">
+                    <Checkbox 
+                      id="resetPass" 
+                      checked={formData.resetPasswordNextLogin} 
+                      onCheckedChange={(checked) => setFormData({...formData, resetPasswordNextLogin: !!checked})}
+                    />
+                    <div className="grid gap-1.5 leading-none">
+                      <Label htmlFor="resetPass" className="text-sm font-medium leading-none cursor-pointer">
+                        Exigir redefinição de senha no próximo login
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        O usuário será obrigado a trocar a senha assim que entrar no sistema.
+                      </p>
                     </div>
                   </div>
                   <div className="grid gap-2">
@@ -302,7 +320,8 @@ export function Users({ users, setUsers, currentUser, addLog }: UsersProps) {
                             name: user.name,
                             username: user.username,
                             password: '',
-                            role: user.role as any
+                            role: user.role as any,
+                            resetPasswordNextLogin: !!user.resetPasswordNextLogin
                           });
                           setIsDialogOpen(true);
                         }}
