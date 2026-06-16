@@ -20,7 +20,7 @@ export const initialSettings: AppSettings = {
   bgImage: 'https://images.unsplash.com/photo-1516733725897-1aa73b87c8e8?q=80&w=2070&auto=format&fit=crop',
   bgOpacity: 0.15,
   theme: 'light',
-  devInfo: 'Desenvolvido por: Equipe de Tecnologia CBPMESP\nVersão: 2.0.0\nContato: suporte@bombeiros.sp.gov.br',
+  devInfo: 'Desenvolvido por Cavalieri\nVersão: 2.0.0',
   systemMode: 'local',
   googleSheetsUrl: 'https://script.google.com/macros/s/AKfycbz8KdGmeUJbxD5Heb__3bEIpoYpDzwo8MXzVLfBeW3atJpOL8yudJ2QvcvWgR0wEC2Y/exec',
   hierarchy: {

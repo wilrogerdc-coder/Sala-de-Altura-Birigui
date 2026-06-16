@@ -57,7 +57,15 @@ export default function App() {
     
     // Garante que a URL do banco de dados esteja sempre correta nas configurações locais
     if (settings.googleSheetsUrl !== FIXED_SHEETS_URL) {
-      setSettings({ ...settings, googleSheetsUrl: FIXED_SHEETS_URL });
+      setSettings(prev => ({ ...prev, googleSheetsUrl: FIXED_SHEETS_URL }));
+    }
+
+    // Migration: Atualiza informações do desenvolvedor para a nova versão
+    if (settings.devInfo && settings.devInfo.includes('Equipe de Tecnologia CBPMESP')) {
+      setSettings(prev => ({
+        ...prev,
+        devInfo: 'Desenvolvido por Cavalieri\nVersão: 2.0.0'
+      }));
     }
   }, []);
 

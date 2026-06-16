@@ -56,7 +56,9 @@ interface AllocationsProps {
 export function Allocations({ locations, setLocations, materials, addLog }: AllocationsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -64,6 +66,11 @@ export function Allocations({ locations, setLocations, materials, addLog }: Allo
     type: 'viatura' as 'viatura' | 'outro',
     status: 'operacional' as any,
     description: ''
+  });
+
+  const [transferData, setTransferData] = useState({
+    destinationLocationId: '',
+    quantity: 0
   });
 
   const handleSaveLocation = () => {
@@ -101,6 +108,62 @@ export function Allocations({ locations, setLocations, materials, addLog }: Allo
     setLocations(locations.filter(l => l.id !== id));
     addLog('Exclusão de Local', `Local ${loc?.name} foi removido.`);
     toast.success('Local removido.');
+  };
+
+  const handleTransfer = () => {
+    if (!selectedLocation || !selectedMaterial || !transferData.destinationLocationId || transferData.quantity <= 0) {
+      toast.error('Preencha todos os campos da movimentação.');
+      return;
+    }
+
+    const itemInSource = selectedLocation.materials.find(m => m.materialId === selectedMaterial.id);
+    if (!itemInSource || transferData.quantity > itemInSource.quantity) {
+      toast.error('Quantidade insuficiente no local de origem.');
+      return;
+    }
+
+    // Update locations
+    const updatedLocations = locations.map(loc => {
+      // Remove from source
+      if (loc.id === selectedLocation.id) {
+        return {
+          ...loc,
+          materials: loc.materials.map(m => 
+            m.materialId === selectedMaterial.id ? { ...m, quantity: m.quantity - transferData.quantity } : m
+          ).filter(m => m.quantity > 0)
+        };
+      }
+      // Add to destination
+      if (loc.id === transferData.destinationLocationId || (transferData.destinationLocationId === 'reserva' && loc.type === 'reserva')) {
+        const existing = loc.materials.find(m => m.materialId === selectedMaterial.id);
+        if (existing) {
+          return {
+            ...loc,
+            materials: loc.materials.map(m => 
+              m.materialId === selectedMaterial.id ? { ...m, quantity: m.quantity + transferData.quantity } : m
+            )
+          };
+        } else {
+          return {
+            ...loc,
+            materials: [...loc.materials, { materialId: selectedMaterial.id, quantity: transferData.quantity }]
+          };
+        }
+      }
+      return loc;
+    });
+
+    setLocations(updatedLocations);
+    
+    // Update local state for modal
+    const newSource = updatedLocations.find(l => l.id === selectedLocation.id);
+    setSelectedLocation(newSource || null);
+
+    const dest = transferData.destinationLocationId === 'reserva' ? { name: 'Reserva' } : locations.find(l => l.id === transferData.destinationLocationId);
+    addLog('Movimentação de Material', `Transferido ${transferData.quantity} ${selectedMaterial.unit} de ${selectedMaterial.name} de ${selectedLocation.name} para ${dest?.name}.`);
+    
+    toast.success('Material movimentado com sucesso!');
+    setIsTransferDialogOpen(false);
   };
 
   const safeLocations = Array.isArray(locations) ? locations : [];
@@ -438,12 +501,28 @@ export function Allocations({ locations, setLocations, materials, addLog }: Allo
                                     id={`return-qty-${item.materialId}`}
                                   />
                                 </TableCell>
-                                <TableCell className="text-right">
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="text-red-600 border-red-200 hover:bg-red-50"
-                                    onClick={() => {
+                            <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm" 
+                                      className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                                      onClick={() => {
+                                        setSelectedMaterial(material || null);
+                                        setTransferData({
+                                          destinationLocationId: '',
+                                          quantity: item.quantity
+                                        });
+                                        setIsTransferDialogOpen(true);
+                                      }}
+                                    >
+                                      Movimentar
+                                    </Button>
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm" 
+                                      className="text-red-600 border-red-200 hover:bg-red-50"
+                                      onClick={() => {
                                       if (!selectedLocation || !material) return;
                                       const input = document.getElementById(`return-qty-${item.materialId}`) as HTMLInputElement;
                                       const returnQty = parseInt(input.value) || 0;
@@ -477,7 +556,8 @@ export function Allocations({ locations, setLocations, materials, addLog }: Allo
                                   >
                                     Retornar
                                   </Button>
-                                </TableCell>
+                                </div>
+                              </TableCell>
                               </TableRow>
                             );
                           })}
@@ -498,6 +578,65 @@ export function Allocations({ locations, setLocations, materials, addLog }: Allo
           </div>
         </div>
       )}
+
+      {/* Transfer Dialog */}
+      <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-purple-600" />
+              Movimentar: {selectedMaterial?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Transfira este item de <strong>{selectedLocation?.name}</strong> para outro destino.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Destino</Label>
+              <Select 
+                value={transferData.destinationLocationId}
+                onValueChange={(val) => setTransferData({...transferData, destinationLocationId: val})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="reserva">Reserva Central</SelectItem>
+                  {locations.filter(l => l.id !== selectedLocation?.id && l.type !== 'reserva').map(loc => (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {loc.name} {loc.prefixo ? `(${loc.prefixo})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="transfQty">Quantidade</Label>
+              <div className="flex items-center gap-4">
+                <Input 
+                  id="transfQty" 
+                  type="number" 
+                  value={transferData.quantity} 
+                  onChange={(e) => setTransferData({...transferData, quantity: parseInt(e.target.value) || 0})} 
+                />
+                <span className="text-muted-foreground text-sm whitespace-nowrap">{selectedMaterial?.unit}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Disponível em {selectedLocation?.name}: {selectedLocation?.materials.find(m => m.materialId === selectedMaterial?.id)?.quantity || 0} {selectedMaterial?.unit}
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleTransfer} className="bg-purple-600 hover:bg-purple-700 text-white">Confirmar Transferência</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

@@ -68,6 +68,7 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isAllocateDialogOpen, setIsAllocateDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null);
   
@@ -82,6 +83,12 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
 
   const [allocationData, setAllocationData] = useState({
     locationId: '',
+    quantity: 0
+  });
+
+  const [transferData, setTransferData] = useState({
+    sourceLocationId: '',
+    destinationLocationId: '',
     quantity: 0
   });
 
@@ -201,6 +208,89 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
     setIsAllocateDialogOpen(false);
     setSelectedMaterial(null);
     setAllocationData({ locationId: '', quantity: 0 });
+  };
+
+  const handleTransfer = () => {
+    if (!selectedMaterial || !transferData.sourceLocationId || !transferData.destinationLocationId || transferData.quantity <= 0) {
+      toast.error('Preencha todos os campos da movimentação.');
+      return;
+    }
+
+    if (transferData.sourceLocationId === transferData.destinationLocationId) {
+      toast.error('O local de origem e destino não podem ser iguais.');
+      return;
+    }
+
+    // Check available quantity in source
+    let sourceQuantity = 0;
+    if (transferData.sourceLocationId === 'reserva') {
+      sourceQuantity = getAvailableQuantity(selectedMaterial, safeLocations, loans);
+    } else {
+      const sourceLoc = safeLocations.find(l => l.id === transferData.sourceLocationId);
+      sourceQuantity = sourceLoc?.materials.find(m => m.materialId === selectedMaterial.id)?.quantity || 0;
+    }
+
+    if (transferData.quantity > sourceQuantity) {
+      toast.error('Quantidade superior à disponível no local de origem.');
+      return;
+    }
+
+    // Update locations
+    const updatedLocations = locations.map(loc => {
+      // Remove from source
+      if (loc.id === transferData.sourceLocationId || (transferData.sourceLocationId === 'reserva' && loc.type === 'reserva')) {
+        return {
+          ...loc,
+          materials: loc.materials.map(m => 
+            m.materialId === selectedMaterial.id ? { ...m, quantity: m.quantity - transferData.quantity } : m
+          ).filter(m => m.quantity > 0)
+        };
+      }
+      // Add to destination
+      if (loc.id === transferData.destinationLocationId || (transferData.destinationLocationId === 'reserva' && loc.type === 'reserva')) {
+        const existing = loc.materials.find(m => m.materialId === selectedMaterial.id);
+        if (existing) {
+          return {
+            ...loc,
+            materials: loc.materials.map(m => 
+              m.materialId === selectedMaterial.id ? { ...m, quantity: m.quantity + transferData.quantity } : m
+            )
+          };
+        } else {
+          return {
+            ...loc,
+            materials: [...loc.materials, { materialId: selectedMaterial.id, quantity: transferData.quantity }]
+          };
+        }
+      }
+      return loc;
+    });
+
+    // Update material available quantity if transferring from/to reserva (internal calculation)
+    // Actually, availableQuantity is a property of Material but getAvailableQuantity calculates it.
+    // We should keep the material's availableQuantity updated if it's used.
+    const updatedMaterials = materials.map(m => {
+      if (m.id === selectedMaterial.id) {
+        let newAvailable = m.availableQuantity;
+        if (transferData.sourceLocationId === 'reserva') newAvailable -= transferData.quantity;
+        if (transferData.destinationLocationId === 'reserva') newAvailable += transferData.quantity;
+        return { ...m, availableQuantity: newAvailable };
+      }
+      return m;
+    });
+
+    setLocations(updatedLocations);
+    setMaterials(updatedMaterials);
+    
+    const source = transferData.sourceLocationId === 'reserva' ? { name: 'Reserva' } : locations.find(l => l.id === transferData.sourceLocationId);
+    const dest = transferData.destinationLocationId === 'reserva' ? { name: 'Reserva' } : locations.find(l => l.id === transferData.destinationLocationId);
+    
+    addLog('Movimentação de Material', `Transferido ${transferData.quantity} ${selectedMaterial.unit} de ${selectedMaterial.name} de ${source?.name} para ${dest?.name}.`);
+    
+    toast.success('Material movimentado com sucesso!');
+    setIsTransferDialogOpen(false);
+    setSelectedMaterial(null);
+    setTransferData({ sourceLocationId: '', destinationLocationId: '', quantity: 0 });
   };
 
   const handleExportMaterials = () => {
@@ -423,6 +513,23 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
                         <Button 
                           variant="ghost" 
                           size="icon" 
+                          className="h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                          title="Movimentar entre locais"
+                          onClick={() => {
+                            setSelectedMaterial(material);
+                            setTransferData({
+                              sourceLocationId: 'reserva',
+                              destinationLocationId: '',
+                              quantity: 0
+                            });
+                            setIsTransferDialogOpen(true);
+                          }}
+                        >
+                          <ArrowLeftRight size={16} />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
                           className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                           onClick={() => deleteMaterial(material.id)}
                         >
@@ -500,6 +607,102 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
         </div>
       )}
 
+      {/* Transfer Overlay */}
+      {isTransferDialogOpen && selectedMaterial && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in duration-300">
+          <div className="p-4 border-b bg-gray-50 flex flex-row items-center justify-between shrink-0">
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-purple-600 rounded-lg text-white">
+                <ArrowLeftRight size={20} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold">Movimentar Material: {selectedMaterial.name}</h2>
+                <p className="text-sm text-muted-foreground">Transfira este item entre viaturas, locais ou reserva.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="lg" onClick={() => setIsTransferDialogOpen(false)}>Cancelar</Button>
+              <Button onClick={handleTransfer} className="bg-purple-600 hover:bg-purple-700 text-white" size="lg">Confirmar Movimentação</Button>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-6 bg-gray-100/50">
+            <div className="max-w-xl mx-auto space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Detalhes da Movimentação</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label>Origem</Label>
+                      <Select 
+                        value={transferData.sourceLocationId} 
+                        onValueChange={(val) => setTransferData({...transferData, sourceLocationId: val})}
+                      >
+                        <SelectTrigger className="h-12">
+                          <SelectValue placeholder="Selecione a origem" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="reserva">Reserva Central</SelectItem>
+                          {locations.filter(l => l.type !== 'reserva' && l.materials.some(m => m.materialId === selectedMaterial.id)).map(loc => (
+                            <SelectItem key={loc.id} value={loc.id}>
+                              {loc.name} {loc.prefixo ? `(${loc.prefixo})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Destino</Label>
+                      <Select 
+                        value={transferData.destinationLocationId}
+                        onValueChange={(val) => setTransferData({...transferData, destinationLocationId: val})}
+                      >
+                        <SelectTrigger className="h-12">
+                          <SelectValue placeholder="Selecione o destino" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="reserva">Reserva Central</SelectItem>
+                          {locations.filter(l => l.type !== 'reserva' && l.id !== transferData.sourceLocationId).map(loc => (
+                            <SelectItem key={loc.id} value={loc.id}>
+                              {loc.name} {loc.prefixo ? `(${loc.prefixo})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="transfQty">Quantidade a Movimentar</Label>
+                    <div className="flex items-center gap-4">
+                      <Input 
+                        id="transfQty" 
+                        type="number" 
+                        className="h-12 text-lg font-bold"
+                        value={transferData.quantity} 
+                        onChange={(e) => setTransferData({...transferData, quantity: parseInt(e.target.value) || 0})} 
+                      />
+                      <span className="text-muted-foreground font-medium">{selectedMaterial.unit}</span>
+                    </div>
+                    {transferData.sourceLocationId && (
+                      <p className="text-sm text-blue-600 font-medium">
+                        Disponível na Origem: {
+                          transferData.sourceLocationId === 'reserva' 
+                          ? getAvailableQuantity(selectedMaterial, safeLocations, loans)
+                          : safeLocations.find(l => l.id === transferData.sourceLocationId)?.materials.find(m => m.materialId === selectedMaterial.id)?.quantity || 0
+                        } {selectedMaterial.unit}
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Details Overlay - Full Screen */}
       {isDetailsDialogOpen && selectedMaterial && (
         <div className="fixed inset-0 z-[100] bg-white flex flex-col animate-in fade-in duration-300">
@@ -568,11 +771,28 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
                               {locMat?.quantity} {selectedMaterial.unit}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="text-red-600 border-red-200 hover:bg-red-50"
-                                onClick={() => {
+                              <div className="flex justify-end gap-2 text-right">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                                  onClick={() => {
+                                    setSelectedMaterial(selectedMaterial);
+                                    setTransferData({
+                                      sourceLocationId: loc.id,
+                                      destinationLocationId: '',
+                                      quantity: locMat?.quantity || 0
+                                    });
+                                    setIsTransferDialogOpen(true);
+                                  }}
+                                >
+                                  Movimentar
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="text-red-600 border-red-200 hover:bg-red-50"
+                                  onClick={() => {
                                   if (!selectedMaterial || !locMat) return;
                                   // Transfer back to Reserva
                                   const updatedLocations = locations.map(l => {
@@ -591,7 +811,8 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
                               >
                                 Retornar à Reserva
                               </Button>
-                            </TableCell>
+                            </div>
+                          </TableCell>
                           </TableRow>
                         );
                       })}
