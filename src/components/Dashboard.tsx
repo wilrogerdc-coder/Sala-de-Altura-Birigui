@@ -26,17 +26,19 @@ import {
   PieChart,
   Pie
 } from 'recharts';
-import { Material, Location, AppSettings, Loan } from '../types';
+import { Material, Location, AppSettings, Loan, Log } from '../types';
 import { getAvailableQuantity } from '../lib/inventoryUtils';
+import { subHours, parse } from 'date-fns';
 
 interface DashboardProps {
   materials: Material[];
   viaturas: Location[];
   loans: Loan[];
+  logs: Log[];
   settings: AppSettings;
 }
 
-export function Dashboard({ materials = [], viaturas = [], loans = [], settings }: DashboardProps) {
+export function Dashboard({ materials = [], viaturas = [], loans = [], logs = [], settings }: DashboardProps) {
   const safeMaterials = Array.isArray(materials) ? materials : [];
   const safeViaturas = Array.isArray(viaturas) ? viaturas : [];
   const systemMode = settings?.systemMode || 'local';
@@ -50,6 +52,23 @@ export function Dashboard({ materials = [], viaturas = [], loans = [], settings 
   const availableMaterials = safeMaterials.reduce((acc, m) => acc + getAvailableQuantity(m, safeViaturas, loans), 0);
   const operationalViaturas = safeViaturas.filter(v => v.type === 'viatura' && v.status === 'operacional').length;
   const totalViaturas = safeViaturas.filter(v => v.type === 'viatura').length;
+
+  // New Indicators Calculation
+  const activeLoans = loans.filter(l => l.status === 'ativo').length;
+  
+  const last24hLogs = logs.filter(log => {
+    try {
+      const logDate = parse(log.timestamp, 'dd/MM/yyyy HH:mm:ss', new Date());
+      return logDate > subHours(new Date(), 24);
+    } catch (e) {
+      return false;
+    }
+  }).length;
+
+  const allocatedMaterialsCount = safeMaterials.reduce((acc, m) => {
+    const allocated = (m.totalQuantity || 0) - getAvailableQuantity(m, safeViaturas, loans);
+    return acc + allocated;
+  }, 0);
 
   const unitData = safeMaterials.reduce((acc: any[], m) => {
     const unitName = m.unitName || settings.unitName || 'Unidade Local';
@@ -130,9 +149,63 @@ export function Dashboard({ materials = [], viaturas = [], loans = [], settings 
             <Activity className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{Math.round((availableMaterials / totalMaterials) * 100)}%</div>
+            <div className="text-2xl font-bold">{totalMaterials > 0 ? Math.round((availableMaterials / totalMaterials) * 100) : 0}%</div>
             <p className="text-xs text-muted-foreground">Materiais na reserva técnica</p>
           </CardContent>
+        </Card>
+      </div>
+
+      {/* New Indicators Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="bg-zinc-900 text-white border-none shadow-xl">
+           <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-bold uppercase tracking-widest text-[#B22222]">Carga Ativa</CardTitle>
+           </CardHeader>
+           <CardContent>
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-3xl font-black">{allocatedMaterialsCount}</div>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">Materiais em viaturas/alocados</p>
+                </div>
+                <div className="h-10 w-10 bg-[#B22222]/20 rounded-full flex items-center justify-center">
+                  <ArrowUpRight className="text-[#B22222] h-5 w-5" />
+                </div>
+              </div>
+           </CardContent>
+        </Card>
+
+        <Card className="bg-zinc-900 text-white border-none shadow-xl">
+           <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-bold uppercase tracking-widest text-[#FFD700]">Empréstimos</CardTitle>
+           </CardHeader>
+           <CardContent>
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-3xl font-black">{activeLoans}</div>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">Documentos de carga ativa</p>
+                </div>
+                <div className="h-10 w-10 bg-[#FFD700]/20 rounded-full flex items-center justify-center">
+                  <Activity className="text-[#FFD700] h-5 w-5" />
+                </div>
+              </div>
+           </CardContent>
+        </Card>
+
+        <Card className="bg-zinc-900 text-white border-none shadow-xl">
+           <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-bold uppercase tracking-widest text-emerald-500">Fluxo 24h</CardTitle>
+           </CardHeader>
+           <CardContent>
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-3xl font-black">{last24hLogs}</div>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">Registros de atividades recentes</p>
+                </div>
+                <div className="h-10 w-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                  <ArrowUpRight className="text-emerald-500 h-5 w-5" />
+                </div>
+              </div>
+           </CardContent>
         </Card>
       </div>
 

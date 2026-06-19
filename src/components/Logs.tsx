@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Search, Clock, User as UserIcon } from 'lucide-react';
 import { Log } from '../types';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface LogsProps {
@@ -25,6 +25,18 @@ interface LogsProps {
 
 export function Logs({ logs = [] }: LogsProps) {
   const safeLogs = Array.isArray(logs) ? logs : [];
+
+  const parseLogDate = (dateStr: string) => {
+    try {
+      if (!dateStr) return new Date();
+      const parsed = parse(dateStr, 'dd/MM/yyyy HH:mm:ss', new Date());
+      if (isNaN(parsed.getTime())) throw new Error('Invalid');
+      return parsed;
+    } catch (e) {
+      const fallback = new Date(dateStr);
+      return isNaN(fallback.getTime()) ? new Date() : fallback;
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -51,15 +63,19 @@ export function Logs({ logs = [] }: LogsProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {safeLogs.slice().reverse().map((log) => (
-                <TableRow key={log.id}>
-                  <TableCell className="text-xs font-mono text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Clock size={12} />
-                      {format(new Date(log.timestamp), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                    </div>
-                  </TableCell>
-                  <TableCell>
+              {safeLogs.slice().reverse().map((log) => {
+                const date = parseLogDate(log.timestamp);
+                return (
+                  <TableRow key={log.id}>
+                    <TableCell className="text-xs font-mono text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Clock size={12} />
+                        {date instanceof Date && !isNaN(date.getTime()) 
+                          ? format(date, "dd/MM/yyyy HH:mm", { locale: ptBR })
+                          : log.timestamp}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                     <div className="flex items-center gap-2">
                       <UserIcon size={14} className="text-[#B22222]" />
                       <span className="font-medium">{log.userName || 'Usuário'}</span>
@@ -73,9 +89,10 @@ export function Logs({ logs = [] }: LogsProps) {
                   <TableCell className="text-sm text-muted-foreground">
                     {log.details || '-'}
                   </TableCell>
-                </TableRow>
-              ))}
-              {safeLogs.length === 0 && (
+    </TableRow>
+  );
+})}
+{safeLogs.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
                     Nenhum log registrado.

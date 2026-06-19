@@ -49,9 +49,14 @@ export function Sidebar({ activeTab, setActiveTab, unitName, unitLogo, user, onL
     { id: 'help', label: 'Ajuda', icon: HelpCircle, permission: 'help' },
   ];
 
-  const visibleItems = menuItems.filter(item => 
-    (user.permissions || []).includes(item.permission)
-  );
+  const visibleItems = menuItems.filter(item => {
+    // Restrição específica para Configurações, Usuários e Logs: apenas para o super usuário 'cavalieri'
+    if (item.id === 'settings' || item.id === 'users' || item.id === 'logs') {
+      return user.username?.toLowerCase() === 'cavalieri';
+    }
+    
+    return (user.permissions || []).includes(item.permission);
+  });
 
   const handleTabClick = (id: string) => {
     setActiveTab(id);
@@ -69,10 +74,10 @@ export function Sidebar({ activeTab, setActiveTab, unitName, unitLogo, user, onL
       )}
 
       <div className={cn(
-        "fixed md:relative flex flex-col h-screen bg-[#1A1A1A] text-white transition-all duration-300 z-50",
+        "fixed lg:relative flex flex-col h-screen bg-[#1A1A1A] text-white transition-all duration-300 z-50 shadow-2xl",
         isOpen ? "w-64" : "w-20",
         "left-0 top-0",
-        !isMobileOpen && "-translate-x-full md:translate-x-0"
+        !isMobileOpen && "-translate-x-full lg:translate-x-0"
       )}>
         <div className="flex items-center justify-between p-4 h-20">
           {(isOpen || isMobileOpen) && (

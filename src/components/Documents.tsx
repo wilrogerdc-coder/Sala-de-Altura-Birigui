@@ -204,10 +204,12 @@ export function Documents({ documents = [], setDocuments, addLog }: DocumentsPro
               <CardDescription className="capitalize">{doc.category}</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" asChild>
-                <a href={doc.url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" /> Acessar Documento
-                </a>
+              <Button 
+                variant="outline" 
+                className="w-full" 
+                onClick={() => window.open(doc.url, '_blank')}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" /> Acessar Documento
               </Button>
             </CardContent>
           </Card>

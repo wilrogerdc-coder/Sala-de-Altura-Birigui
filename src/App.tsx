@@ -218,7 +218,27 @@ export default function App() {
     }
     
     setCurrentUser(user);
+    addLog('Login no Sistema', `Usuário ${user.name} realizou acesso ao sistema.`);
   };
+
+  // Registro de Navegação (Acesso a Módulos)
+  useEffect(() => {
+    if (currentUser && activeTab) {
+      const tabNames: Record<string, string> = {
+        'dashboard': 'Dashboard',
+        'inventory': 'Inventário',
+        'allocations': 'Locais/Viaturas',
+        'loans': 'Empréstimos',
+        'documents': 'Documentos',
+        'logs': 'Logs do Sistema',
+        'reports': 'Relatórios',
+        'users': 'Gestão de Usuários',
+        'settings': 'Configurações',
+        'help': 'Central de Ajuda'
+      };
+      addLog('Acesso a Módulo', `Visualizou tela: ${tabNames[activeTab] || activeTab}`);
+    }
+  }, [activeTab]);
 
   const handleLogout = () => {
     if (currentUser) {
@@ -316,7 +336,7 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Dashboard materials={materials} viaturas={locations} loans={loans} settings={settings} />;
+        return <Dashboard materials={materials} viaturas={locations} loans={loans} settings={settings} logs={logs} />;
       case 'inventory':
         return <Inventory materials={materials} setMaterials={setMaterials} locations={locations} setLocations={setLocations} loans={loans} addLog={addLog} />;
       case 'allocations':
@@ -326,10 +346,12 @@ export default function App() {
       case 'documents':
         return <Documents documents={documents} setDocuments={setDocuments} addLog={addLog} />;
       case 'logs':
+        if (currentUser?.username?.toLowerCase() !== 'cavalieri') return <Dashboard materials={materials} viaturas={locations} loans={loans} settings={settings} logs={logs} />;
         return <Logs logs={logs} />;
       case 'reports':
-        return <Reports materials={materials} locations={locations} loans={loans} logs={logs} settings={settings} />;
+        return <Reports materials={materials} locations={locations} loans={loans} logs={logs} settings={settings} addLog={addLog} />;
       case 'settings':
+        if (currentUser?.username?.toLowerCase() !== 'cavalieri') return <Dashboard materials={materials} viaturas={locations} loans={loans} settings={settings} logs={logs} />;
         return (
           <Settings 
             settings={settings} 
@@ -349,11 +371,12 @@ export default function App() {
           />
         );
       case 'users':
+        if (currentUser?.username?.toLowerCase() !== 'cavalieri') return <Dashboard materials={materials} viaturas={locations} loans={loans} settings={settings} logs={logs} />;
         return <Users users={users} setUsers={setUsers} currentUser={currentUser} addLog={addLog} />;
       case 'help':
         return <Help settings={settings} setSettings={setSettings} currentUser={currentUser} />;
       default:
-        return <Dashboard materials={materials} viaturas={locations} loans={loans} settings={settings} />;
+        return <Dashboard materials={materials} viaturas={locations} loans={loans} settings={settings} logs={logs} />;
     }
   };
 
@@ -379,9 +402,9 @@ export default function App() {
         setIsMobileOpen={setIsMobileMenuOpen}
       />
       
-      <main className="relative z-10 flex-1 overflow-y-auto p-4 md:p-8 flex flex-col">
+      <main className="relative z-10 flex-1 h-full overflow-y-auto p-4 lg:p-8 flex flex-col w-full">
         {/* Mobile Header Toggle */}
-        <div className="md:hidden flex items-center justify-between mb-4 bg-white/10 backdrop-blur-md p-3 rounded-xl border border-white/20">
+        <div className="lg:hidden flex items-center justify-between mb-4 bg-black/80 backdrop-blur-md p-3 rounded-xl border border-white/10 shadow-lg sticky top-0 z-40">
           <div className="flex items-center gap-2">
             <img src={settings.unitLogo} alt="Logo" className="w-8 h-8 object-contain" />
             <span className="font-bold text-xs uppercase tracking-wider text-white">{settings.systemName || 'SALA DE ALTURA'}</span>
@@ -404,7 +427,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="hidden md:flex items-center justify-end mb-4 gap-4">
+        <div className="hidden lg:flex items-center justify-end mb-4 gap-4">
           {settings.googleSheetsUrl && (
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-md transition-all ${
               dbStatus === 'connected' ? 'bg-green-500/10 border-green-500/20 text-green-600' :

@@ -65,6 +65,7 @@ interface InventoryProps {
 
 export function Inventory({ materials, setMaterials, locations, setLocations, loans, addLog }: InventoryProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'category'; direction: 'asc' | 'desc' } | null>(null);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isAllocateDialogOpen, setIsAllocateDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
@@ -99,6 +100,24 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
     (m.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (m.category || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const sortedMaterials = [...filteredMaterials].sort((a, b) => {
+    if (!sortConfig) return 0;
+    const { key, direction } = sortConfig;
+    const valA = (a[key] || '').toLowerCase();
+    const valB = (b[key] || '').toLowerCase();
+    if (valA < valB) return direction === 'asc' ? -1 : 1;
+    if (valA > valB) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const requestSort = (key: 'name' | 'category') => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const handleSaveMaterial = () => {
     if (!formData.name || !formData.category) {
@@ -340,11 +359,15 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
             <Download className="mr-2 h-4 w-4" /> Exportar
           </Button>
           <div className="relative">
-            <Button variant="outline" asChild>
-              <label className="cursor-pointer">
-                <Upload className="mr-2 h-4 w-4" /> Importar
-                <input type="file" className="hidden" accept=".json" onChange={handleImportMaterials} />
-              </label>
+            <Button variant="outline" onClick={() => document.getElementById('import-materials-input')?.click()}>
+              <Upload className="mr-2 h-4 w-4" /> Importar
+              <input 
+                id="import-materials-input"
+                type="file" 
+                className="hidden" 
+                accept=".json" 
+                onChange={handleImportMaterials} 
+              />
             </Button>
           </div>
           <Button className="bg-[#B22222] hover:bg-[#B22222]/90" onClick={() => {
@@ -434,8 +457,18 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Material</TableHead>
-                <TableHead>Categoria</TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => requestSort('name')}>
+                  <div className="flex items-center gap-2">
+                    Material
+                    <ArrowUpDown size={14} className={sortConfig?.key === 'name' ? 'text-primary' : 'text-muted-foreground'} />
+                  </div>
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-gray-50" onClick={() => requestSort('category')}>
+                  <div className="flex items-center gap-2">
+                    Categoria
+                    <ArrowUpDown size={14} className={sortConfig?.key === 'category' ? 'text-primary' : 'text-muted-foreground'} />
+                  </div>
+                </TableHead>
                 <TableHead className="text-center">Total</TableHead>
                 <TableHead className="text-center">Alocado</TableHead>
                 <TableHead className="text-center">Reserva</TableHead>
@@ -444,7 +477,7 @@ export function Inventory({ materials, setMaterials, locations, setLocations, lo
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMaterials.map((material) => {
+              {sortedMaterials.map((material) => {
                 const allocated = getAllocatedQuantity(material.id, safeLocations);
                 const available = getAvailableQuantity(material, safeLocations, loans);
                 const isLowStock = available <= material.minStock;
