@@ -129,7 +129,7 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
   ];
 
   const getFilteredMaterials = () => {
-    let base = [...sortedMaterials];
+    let base = [...materials].sort((a, b) => a.name.localeCompare(b.name));
     
     if (previewType === 'Itens em Estoque Crítico') {
       base = base.filter(m => getAvailableQuantity(m, locations, loans) <= m.minStock);

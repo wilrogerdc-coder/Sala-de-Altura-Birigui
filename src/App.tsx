@@ -312,7 +312,7 @@ export default function App() {
           </div>
         </div>
         <div className="absolute bottom-8 left-0 right-0 text-center text-white/30 text-xs font-mono uppercase tracking-widest">
-          SALA DE ALTURA • CBPMESP
+          SALA DE ALTURA
         </div>
       </div>
     );
