@@ -342,7 +342,19 @@ export default function App() {
       case 'allocations':
         return <Allocations locations={locations} setLocations={setLocations} materials={materials} addLog={addLog} />;
       case 'loans':
-        return <Loans loans={loans} setLoans={setLoans} materials={materials} setMaterials={setMaterials} locations={locations} setLocations={setLocations} addLog={addLog} />;
+        return (
+          <Loans 
+            loans={loans} 
+            setLoans={setLoans} 
+            materials={materials} 
+            setMaterials={setMaterials} 
+            locations={locations} 
+            setLocations={setLocations} 
+            addLog={addLog}
+            currentUser={currentUser}
+            settings={settings}
+          />
+        );
       case 'documents':
         return <Documents documents={documents} setDocuments={setDocuments} addLog={addLog} />;
       case 'logs':
