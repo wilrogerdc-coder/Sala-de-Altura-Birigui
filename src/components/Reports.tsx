@@ -40,6 +40,12 @@ import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
+import { 
+  generateWithdrawalReceiptPDF, 
+  generateWithdrawalsReportPDF, 
+  resolveLocationName, 
+  resolveMaterialName 
+} from '../lib/receiptPdf';
 
 interface ReportsProps {
   materials: Material[];
@@ -125,6 +131,13 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
       description: 'Materiais agrupados ou filtrados por viaturas e setores específicos.',
       icon: Truck,
       color: 'bg-green-600'
+    },
+    { 
+      id: 'withdrawals',
+      title: 'Relatório de Retirada de Materiais', 
+      description: 'Histórico de cargas, empréstimos temporários e emissão de comprovantes oficiais.',
+      icon: Printer,
+      color: 'bg-amber-600'
     }
   ];
 
@@ -151,6 +164,17 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
    * This handles multi-page automatically, is searchable, and very lightweight (KB).
    */
   const generateProfessionalPDF = async (title: string) => {
+    if (title === 'Relatório de Retirada de Materiais') {
+      await generateWithdrawalsReportPDF({
+        loans,
+        materials,
+        locations,
+        settings,
+        statusFilter: 'todos'
+      });
+      return;
+    }
+
     const doc = new jsPDF();
     const filtered = getFilteredMaterials();
     const dateStr = format(new Date(), 'dd/MM/yyyy HH:mm');
@@ -435,15 +459,17 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
           </CardHeader>
           <CardContent className="space-y-4">
              <div className="p-3 bg-white rounded border border-[#B22222]/20 shadow-sm">
-                <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Total de Itens Listados</p>
-                <p className="text-2xl font-black text-[#B22222]">{getFilteredMaterials().length}</p>
+                <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Total de Registros Listados</p>
+                <p className="text-2xl font-black text-[#B22222]">
+                  {previewType === 'Relatório de Retirada de Materiais' ? loans.length : getFilteredMaterials().length}
+                </p>
              </div>
              <p className="text-[10px] text-muted-foreground italic">* O tempo de geração pode variar conforme a quantidade de dados e o modo de renderização escolhido.</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {reportTypes.map((report) => (
           <Card key={report.id} className="hover:border-[#B22222] transition-colors border-2 border-transparent">
             <CardHeader className="p-4 pb-2">
@@ -568,7 +594,71 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
                     <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-48 h-1.5 bg-[#B22222] rounded-full"></div>
                   </div>
 
-                  {previewType === 'Relatório Analítico Detalhado' ? (
+                  {previewType === 'Relatório de Retirada de Materiais' ? (
+                    <table className="w-full border-collapse border border-black text-[9px]">
+                      <thead>
+                        <tr className="bg-[#B22222] text-white">
+                          <th className="border border-[#B22222] p-2 text-left uppercase font-black">MILITAR / RESPONSÁVEL</th>
+                          <th className="border border-[#B22222] p-2 text-left uppercase font-black">DESTINO / MISSÃO</th>
+                          <th className="border border-[#B22222] p-2 text-left uppercase font-black">LOCAL RETIRADA</th>
+                          <th className="border border-[#B22222] p-2 text-left uppercase font-black">MATERIAIS RETIRADOS</th>
+                          <th className="border border-[#B22222] p-2 text-center uppercase font-black">SAÍDA</th>
+                          <th className="border border-[#B22222] p-2 text-center uppercase font-black">STATUS</th>
+                          <th className="border border-[#B22222] p-2 text-center uppercase font-black">COMPROVANTE</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {loans.map((loan, idx) => {
+                          const origin = resolveLocationName(locations, loan.sourceLocationId);
+                          const exit = loan.exitDate ? format(new Date(loan.exitDate), "dd/MM/yy HH:mm") : '-';
+                          return (
+                            <tr key={loan.id || idx} className={idx % 2 === 0 ? '' : 'bg-gray-50'}>
+                              <td className="border border-black p-1.5 font-bold">{loan.soldierName}</td>
+                              <td className="border border-black p-1.5">{loan.destination}</td>
+                              <td className="border border-black p-1.5 uppercase font-medium">{origin}</td>
+                              <td className="border border-black p-1.5">
+                                {(loan.materials || []).map((m, mIdx) => (
+                                  <span key={mIdx} className="inline-block mr-1 text-[8.5px]">
+                                    <strong>{m.quantity}x</strong> {resolveMaterialName(materials, m.materialId)};
+                                  </span>
+                                ))}
+                              </td>
+                              <td className="border border-black p-1.5 text-center">{exit}</td>
+                              <td className={`border border-black p-1.5 text-center font-bold ${loan.status === 'ativo' ? 'text-orange-700' : 'text-emerald-700'}`}>
+                                {loan.status === 'ativo' ? 'EM CARGA' : 'DEVOLVIDO'}
+                              </td>
+                              <td className="border border-black p-1 text-center">
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 bg-[#B22222] hover:bg-[#8B1A1A] text-white rounded text-[8px] font-bold cursor-pointer inline-flex items-center gap-1"
+                                  onClick={() => {
+                                    toast.promise(
+                                      generateWithdrawalReceiptPDF({ loan, materials, locations, settings, action: 'download' }),
+                                      {
+                                        loading: 'Gerando Comprovante PDF...',
+                                        success: 'Comprovante gerado com sucesso!',
+                                        error: 'Erro ao gerar comprovante.'
+                                      }
+                                    );
+                                  }}
+                                  title="Emitir Comprovante / Cautela em PDF"
+                                >
+                                  Baixar PDF
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {loans.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="border border-black p-4 text-center text-gray-500 italic">
+                              Nenhuma retirada de material registrada até o momento.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  ) : previewType === 'Relatório Analítico Detalhado' ? (
                     <table className="w-full border-collapse border border-black text-[9px]">
                       <thead>
                         <tr className="bg-[#B22222] text-white">
@@ -626,7 +716,9 @@ export function Reports({ materials = [], locations = [], loans = [], logs = [],
                     <p className="font-black text-gray-600 uppercase mb-2">Observações e Disposições:</p>
                     <p>• Documento gerado sob demanda para fins exclusivos de conferência logística interna.</p>
                     <p>• As quantidades apresentadas refletem o estado do banco de dados no momento da emissão.</p>
-                    <p>• Total de registros incluídos neste relatório: <span className="font-bold text-gray-900">{(getFilteredMaterials().length)} itens</span>.</p>
+                    <p>• Total de registros incluídos neste relatório: <span className="font-bold text-gray-900">
+                      {previewType === 'Relatório de Retirada de Materiais' ? `${loans.length} retiradas` : `${getFilteredMaterials().length} itens`}
+                    </span>.</p>
                   </div>
                </div>
             </div>

@@ -38,6 +38,20 @@ export interface Loan {
   returnDate?: string;
   status: 'ativo' | 'devolvido';
   sourceLocationId?: string; // De onde o material foi retirado (reserva ou viatura)
+  deliveryResponsible?: string; // Responsável que realizou a entrega/saída dos materiais
+  returnResponsible?: string; // Responsável que realizou a conferência e recebimento na devolução
+  returnObservations?: string; // Observações / Termo inserido no momento da devolução
+  missingObservations?: string; // Observações específicas de materiais faltantes/pendências
+  hasMissingItems?: boolean; // Indica se houve devolução com itens faltantes
+  returnedMaterials?: { // Registro dos materiais que foram efetivamente devolvidos
+    materialId: string;
+    quantity: number;
+  }[];
+  missingMaterials?: { // Registro dos materiais que ficaram pendentes/faltantes
+    materialId: string;
+    quantity: number;
+    reason?: string;
+  }[];
   materials: {
     materialId: string;
     quantity: number;

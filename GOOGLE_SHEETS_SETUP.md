@@ -128,3 +128,25 @@ function doPost(e) {
 A SALA DE ALTURA já está configurada com a URL fixa do banco de dados. Assim que você implantar o script como Web App (passo 3), o sistema começará a sincronizar os dados automaticamente.
 
 Você pode forçar uma sincronização manual em **Configurações > Sincronizar Agora**.
+
+## 5. Estrutura da Aba Loans (Empréstimos e Devoluções)
+Os seguintes campos são sincronizados automaticamente na aba `Loans`:
+- `id`: Identificador único do empréstimo.
+- `soldierName`: Nome do militar responsável pela retirada.
+- `destination`: Destino ou unidade solicitante.
+- `courseName`: Curso ou finalidade da missão.
+- `observations`: Observações gerais registradas na saída.
+- `expectedDuration`: Duração prevista da carga.
+- `exitDate`: Data e hora de saída dos materiais.
+- `returnDate`: Data e hora da devolução/conferência.
+- `status`: Situação do empréstimo (`ativo` ou `devolvido`).
+- `sourceLocationId`: Origem dos materiais (ID da viatura ou reserva).
+- `deliveryResponsible`: Militar/armeiro que realizou a entrega/despacho do material.
+- `returnResponsible`: Militar que realizou a conferência e recebimento na devolução.
+- `returnObservations`: Termo ou observações gerais inseridas no momento da devolução.
+- `missingObservations`: Observações específicas e justificativa de materiais faltantes.
+- `hasMissingItems`: `true` quando há pendência/falta de materiais; `false` se regular.
+- `returnedMaterials`: JSON com os materiais e quantidades efetivamente devolvidos.
+- `missingMaterials`: JSON com os materiais e quantidades faltantes/pendentes.
+- `materials`: JSON com todos os materiais retirados originalmente.
+

@@ -45,10 +45,22 @@ import {
   Package,
   Layers,
   Check,
-  X
+  X,
+  Printer,
+  FileText,
+  Download,
+  FileCheck,
+  RotateCcw,
+  ClipboardCheck,
+  AlertCircle
 } from 'lucide-react';
 import { Loan, Material, Location, User, AppSettings } from '../types';
 import { getAvailableQuantity } from '../lib/inventoryUtils';
+import { 
+  generateWithdrawalReceiptPDF, 
+  generateWithdrawalsReportPDF,
+  generateReturnReceiptPDF
+} from '../lib/receiptPdf';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -110,7 +122,7 @@ export function Loans({
 
   // Estados de Filtro e Busca na Lista Principal
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'devolvido'>('todos');
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'devolvido' | 'faltas'>('todos');
 
   // Modal de Criação de Empréstimo
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -120,6 +132,7 @@ export function Loans({
     courseName: '',
     expectedDuration: '',
     observations: '',
+    deliveryResponsible: '',
     sourceType: 'reserva' as 'reserva' | 'location',
     sourceLocationId: ''
   });
@@ -141,6 +154,10 @@ export function Loans({
     courseName: '',
     expectedDuration: '',
     observations: '',
+    deliveryResponsible: '',
+    returnResponsible: '',
+    returnObservations: '',
+    missingObservations: '',
     status: 'ativo' as 'ativo' | 'devolvido'
   });
   const [editItems, setEditItems] = useState<SelectedMaterialItem[]>([]);
@@ -151,6 +168,104 @@ export function Loans({
   // Modal de Confirmação de Exclusão (Apenas Admin)
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [loanToDelete, setLoanToDelete] = useState<Loan | null>(null);
+
+  // Modal de Comprovante / Cautela de Retirada
+  const [receiptLoan, setReceiptLoan] = useState<Loan | null>(null);
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Modal de Devolução e Conferência Item a Item
+  interface ReturnItemState {
+    materialId: string;
+    name: string;
+    category: string;
+    unit: string;
+    totalQuantity: number;
+    returnedQuantity: number;
+    missingReason: string;
+  }
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [returningLoan, setReturningLoan] = useState<Loan | null>(null);
+  const [returnFormResponsible, setReturnFormResponsible] = useState('');
+  const [returnFormObservations, setReturnFormObservations] = useState('');
+  const [returnFormMissingObs, setReturnFormMissingObs] = useState('');
+  const [returnItemsState, setReturnItemsState] = useState<ReturnItemState[]>([]);
+
+  // Modal de Ficha Oficial / Termo de Devolução (PDF e Visualização)
+  const [returnReceiptLoan, setReturnReceiptLoan] = useState<Loan | null>(null);
+  const [isReturnReceiptModalOpen, setIsReturnReceiptModalOpen] = useState(false);
+
+  // Abrir Modal de Comprovante
+  const handleOpenReceipt = (loan: Loan) => {
+    setReceiptLoan(loan);
+    setIsReceiptOpen(true);
+  };
+
+  // Baixar PDF do Comprovante Individual
+  const handleDownloadReceiptPDF = async (loan: Loan) => {
+    setIsGeneratingPdf(true);
+    const toastId = toast.loading('Gerando Comprovante em PDF...');
+    try {
+      await generateWithdrawalReceiptPDF({
+        loan,
+        materials: safeMaterials,
+        locations: safeLocations,
+        settings,
+        action: 'download'
+      });
+      addLog('Comprovante de Retirada', `PDF do Comprovante emitido para ${loan.soldierName} (${loan.destination}).`);
+      toast.success('Comprovante baixado com sucesso!', { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao gerar PDF do comprovante.', { id: toastId });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  // Imprimir Comprovante Individual
+  const handlePrintReceipt = async (loan: Loan) => {
+    setIsGeneratingPdf(true);
+    const toastId = toast.loading('Preparando impressão do comprovante...');
+    try {
+      await generateWithdrawalReceiptPDF({
+        loan,
+        materials: safeMaterials,
+        locations: safeLocations,
+        settings,
+        action: 'print'
+      });
+      addLog('Impressão de Comprovante', `Comprovante impresso para ${loan.soldierName} (${loan.destination}).`);
+      toast.success('Comando de impressão enviado com sucesso!', { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao enviar para impressão.', { id: toastId });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  // Exportar Relatório Consolidado de Retiradas em PDF
+  const handleExportWithdrawalsReport = async () => {
+    setIsGeneratingPdf(true);
+    const toastId = toast.loading('Gerando Relatório de Retiradas em PDF...');
+    try {
+      await generateWithdrawalsReportPDF({
+        loans: filteredLoans,
+        materials: safeMaterials,
+        locations: safeLocations,
+        settings,
+        statusFilter
+      });
+      addLog('Relatório de Retiradas', `Relatório de retiradas em PDF exportado com ${filteredLoans.length} registros.`);
+      toast.success('Relatório de retiradas exportado com sucesso!', { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao gerar relatório de retiradas.', { id: toastId });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
 
   // Helper para obter nome/descrição legível do material (evitando mostrar IDs)
   const getMaterialDescription = (materialId: string): string => {
@@ -386,6 +501,7 @@ export function Loans({
       exitDate: new Date().toISOString(),
       status: 'ativo',
       sourceLocationId: createFormData.sourceType === 'location' ? createFormData.sourceLocationId : undefined,
+      deliveryResponsible: createFormData.deliveryResponsible.trim() || currentUser?.name || 'Encarregado da Reserva',
       materials: selectedItems.map(item => ({
         materialId: item.materialId,
         quantity: item.quantity
@@ -422,10 +538,15 @@ export function Loans({
     const originName = getLocationDisplayName(newLoan.sourceLocationId);
     addLog(
       'Empréstimo/Carga Temporária', 
-      `Retirada realizada por ${newLoan.soldierName} (${newLoan.destination}) de [${originName}]. Itens: ${itemsSummary}.`
+      `Retirada realizada por ${newLoan.soldierName} (${newLoan.destination}) de [${originName}]. Entregue por ${newLoan.deliveryResponsible}. Itens: ${itemsSummary}.`
     );
 
-    toast.success('Empréstimo com múltiplos materiais registrado com sucesso!');
+    toast.success('Empréstimo com múltiplos materiais registrado com sucesso!', {
+      action: {
+        label: 'Imprimir Comprovante',
+        onClick: () => handleOpenReceipt(newLoan)
+      }
+    });
     setIsCreateOpen(false);
     setSelectedItems([]);
     setCreateFormData({
@@ -434,30 +555,91 @@ export function Loans({
       courseName: '',
       expectedDuration: '',
       observations: '',
+      deliveryResponsible: '',
       sourceType: 'reserva',
       sourceLocationId: ''
     });
   };
 
-  // Devolução de Material
-  const handleReturn = (loan: Loan) => {
-    const updatedLoans = safeLoans.map(l => 
-      l.id === loan.id 
-        ? { ...l, status: 'devolvido' as const, returnDate: new Date().toISOString() } 
-        : l
-    );
+  // Abrir Modal de Devolução e Conferência Item a Item
+  const handleOpenReturnModal = (loan: Loan) => {
+    setReturningLoan(loan);
+    setReturnFormResponsible(currentUser?.name || 'Armeiro / Recebedor');
+    setReturnFormObservations(loan.returnObservations || '');
+    setReturnFormMissingObs(loan.missingObservations || '');
 
-    // Se saiu de viatura/compartimento, estorna de volta para o local
-    if (loan.sourceLocationId) {
+    // Mapeia histórico de devoluções anteriores caso haja
+    const prevReturnedMap = new Map<string, number>();
+    (loan.returnedMaterials || []).forEach(rm => prevReturnedMap.set(rm.materialId, rm.quantity));
+
+    const initialItemsState: ReturnItemState[] = (loan.materials || []).map(item => {
+      const mat = getMaterialDetails(item.materialId);
+      const prevQty = prevReturnedMap.get(item.materialId);
+      // Se não havia devolução parcial registrada, assume devolução integral como padrão (editável item a item)
+      const initialReturned = prevQty !== undefined ? prevQty : item.quantity;
+      return {
+        materialId: item.materialId,
+        name: mat ? mat.name : getMaterialDescription(item.materialId),
+        category: mat?.category || 'Geral',
+        unit: mat?.unit || 'un',
+        totalQuantity: item.quantity,
+        returnedQuantity: initialReturned,
+        missingReason: ''
+      };
+    });
+
+    setReturnItemsState(initialItemsState);
+    setIsReturnModalOpen(true);
+  };
+
+  // Confirmar Devolução (Regular, Aberta c/ Faltas ou Encerrada c/ Faltas)
+  const handleConfirmReturn = (mode: 'regular' | 'keep_open_missing' | 'close_missing') => {
+    if (!returningLoan) return;
+
+    if (!returnFormResponsible.trim()) {
+      toast.error('Informe o responsável pela conferência e recebimento.');
+      return;
+    }
+
+    const hasMissing = returnItemsState.some(i => i.returnedQuantity < i.totalQuantity);
+
+    if (hasMissing && mode === 'regular') {
+      toast.error('Constam materiais faltantes nesta conferência. Escolha "Manter Aberto" ou "Encerrar com Faltas".');
+      return;
+    }
+
+    if (hasMissing && !returnFormMissingObs.trim()) {
+      toast.error('Por favor, informe a justificativa/observação dos materiais faltantes.');
+      return;
+    }
+
+    // Listas discriminadas
+    const returnedMaterialsList = returnItemsState.map(i => ({
+      materialId: i.materialId,
+      quantity: i.returnedQuantity
+    }));
+
+    const missingMaterialsList = returnItemsState
+      .filter(i => i.returnedQuantity < i.totalQuantity)
+      .map(i => ({
+        materialId: i.materialId,
+        quantity: i.totalQuantity - i.returnedQuantity,
+        reason: i.missingReason.trim() || undefined
+      }));
+
+    // Se saiu de viatura/local, estorna para o local apenas os itens que foram devolvidos
+    if (returningLoan.sourceLocationId) {
       const updatedLocations = safeLocations.map(loc => {
-        if (loc.id === loan.sourceLocationId) {
+        if (loc.id === returningLoan.sourceLocationId) {
           const newMaterials = [...loc.materials];
-          (loan.materials || []).forEach(item => {
-            const idx = newMaterials.findIndex(m => m.materialId === item.materialId);
-            if (idx !== -1) {
-              newMaterials[idx] = { ...newMaterials[idx], quantity: newMaterials[idx].quantity + item.quantity };
-            } else {
-              newMaterials.push({ materialId: item.materialId, quantity: item.quantity });
+          returnItemsState.forEach(item => {
+            if (item.returnedQuantity > 0) {
+              const idx = newMaterials.findIndex(m => m.materialId === item.materialId);
+              if (idx !== -1) {
+                newMaterials[idx] = { ...newMaterials[idx], quantity: newMaterials[idx].quantity + item.returnedQuantity };
+              } else {
+                newMaterials.push({ materialId: item.materialId, quantity: item.returnedQuantity });
+              }
             }
           });
           return { ...loc, materials: newMaterials };
@@ -467,9 +649,105 @@ export function Loans({
       setLocations(updatedLocations);
     }
 
+    const isClosed = mode === 'regular' || mode === 'close_missing';
+    const nowIso = new Date().toISOString();
+
+    const updatedLoan: Loan = {
+      ...returningLoan,
+      status: isClosed ? 'devolvido' : 'ativo',
+      returnDate: nowIso,
+      returnResponsible: returnFormResponsible.trim(),
+      returnObservations: returnFormObservations.trim(),
+      missingObservations: hasMissing ? returnFormMissingObs.trim() : undefined,
+      hasMissingItems: hasMissing,
+      returnedMaterials: returnedMaterialsList,
+      missingMaterials: missingMaterialsList
+    };
+
+    const updatedLoans = safeLoans.map(l => l.id === returningLoan.id ? updatedLoan : l);
     setLoans(updatedLoans);
-    addLog('Devolução de Material', `Materiais devolvidos por ${loan.soldierName} (${loan.destination}).`);
-    toast.success('Devolução registrada com sucesso!');
+
+    const missingSummary = missingMaterialsList.map(m => {
+      const item = returnItemsState.find(i => i.materialId === m.materialId);
+      return `${m.quantity}x ${item?.name || m.materialId}`;
+    }).join(', ');
+
+    if (!hasMissing) {
+      addLog(
+        'Devolução Integral de Carga',
+        `Todos os materiais devolvidos por ${returningLoan.soldierName} (${returningLoan.destination}). Recebido por ${returnFormResponsible.trim()}.`
+      );
+      toast.success('Devolução integral registrada com sucesso!');
+    } else if (mode === 'keep_open_missing') {
+      addLog(
+        'Devolução Parcial - Carga Mantida Aberta',
+        `Devolução parcial de ${returningLoan.soldierName}. Carga mantida ABERTA com faltas: [${missingSummary}]. Obs: ${returnFormMissingObs.trim()}. Recebido por ${returnFormResponsible.trim()}.`
+      );
+      toast.warning('Devolução parcial registrada. Carga mantida aberta com faltas pendentes!');
+    } else {
+      addLog(
+        'Carga Encerrada com Materiais Faltantes',
+        `Carga encerrada com FALTAS para ${returningLoan.soldierName}. Faltando: [${missingSummary}]. Obs: ${returnFormMissingObs.trim()}. Recebido por ${returnFormResponsible.trim()}. Ficha registrada.`
+      );
+      toast.error('Carga encerrada gerando materiais faltantes e termo registrado.');
+    }
+
+    setIsReturnModalOpen(false);
+    setReturningLoan(null);
+
+    // Abre a Ficha de Devolução para visualização/impressão imediata
+    setReturnReceiptLoan(updatedLoan);
+    setIsReturnReceiptModalOpen(true);
+  };
+
+  // Abrir Modal de Ficha Oficial de Devolução
+  const handleOpenReturnReceipt = (loan: Loan) => {
+    setReturnReceiptLoan(loan);
+    setIsReturnReceiptModalOpen(true);
+  };
+
+  // Baixar PDF da Ficha de Devolução
+  const handleDownloadReturnReceiptPDF = async (loan: Loan) => {
+    setIsGeneratingPdf(true);
+    const toastId = toast.loading('Gerando Ficha de Devolução em PDF...');
+    try {
+      await generateReturnReceiptPDF({
+        loan,
+        materials: safeMaterials,
+        locations: safeLocations,
+        settings,
+        action: 'download'
+      });
+      addLog('Ficha de Devolução', `Ficha/Termo de Devolução baixada para ${loan.soldierName} (${loan.destination}).`);
+      toast.success('Ficha de Devolução baixada com sucesso!', { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao gerar Ficha de Devolução em PDF.', { id: toastId });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  // Imprimir Ficha de Devolução
+  const handlePrintReturnReceipt = async (loan: Loan) => {
+    setIsGeneratingPdf(true);
+    const toastId = toast.loading('Preparando impressão da Ficha de Devolução...');
+    try {
+      await generateReturnReceiptPDF({
+        loan,
+        materials: safeMaterials,
+        locations: safeLocations,
+        settings,
+        action: 'print'
+      });
+      addLog('Impressão da Ficha de Devolução', `Ficha de Devolução enviada para impressão: ${loan.soldierName}.`);
+      toast.success('Comando de impressão enviado com sucesso!', { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao enviar Ficha de Devolução para impressão.', { id: toastId });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   // Abrir Modal de Edição (Apenas Admin)
@@ -486,6 +764,10 @@ export function Loans({
       courseName: loan.courseName || '',
       expectedDuration: loan.expectedDuration || '',
       observations: loan.observations || '',
+      deliveryResponsible: loan.deliveryResponsible || '',
+      returnResponsible: loan.returnResponsible || '',
+      returnObservations: loan.returnObservations || '',
+      missingObservations: loan.missingObservations || '',
       status: loan.status || 'ativo'
     });
 
@@ -583,6 +865,10 @@ export function Loans({
       courseName: editFormData.courseName.trim(),
       expectedDuration: editFormData.expectedDuration.trim(),
       observations: editFormData.observations.trim(),
+      deliveryResponsible: editFormData.deliveryResponsible.trim(),
+      returnResponsible: editFormData.returnResponsible.trim(),
+      returnObservations: editFormData.returnObservations.trim(),
+      missingObservations: editFormData.missingObservations.trim(),
       status: editFormData.status,
       returnDate: editFormData.status === 'devolvido' && !editingLoan.returnDate ? new Date().toISOString() : editingLoan.returnDate,
       materials: editItems.map(i => ({ materialId: i.materialId, quantity: i.quantity }))
@@ -642,7 +928,9 @@ export function Loans({
   // Filtragem da Lista Principal
   const filteredLoans = useMemo(() => {
     return safeLoans.filter(loan => {
-      if (statusFilter !== 'todos' && loan.status !== statusFilter) {
+      if (statusFilter === 'faltas') {
+        if (!loan.hasMissingItems) return false;
+      } else if (statusFilter !== 'todos' && loan.status !== statusFilter) {
         return false;
       }
       if (!searchTerm) return true;
@@ -651,6 +939,8 @@ export function Loans({
       const soldier = (loan.soldierName || '').toLowerCase();
       const dest = (loan.destination || '').toLowerCase();
       const course = (loan.courseName || '').toLowerCase();
+      const deliveryResp = (loan.deliveryResponsible || '').toLowerCase();
+      const returnResp = (loan.returnResponsible || '').toLowerCase();
       const origin = getLocationDisplayName(loan.sourceLocationId).toLowerCase();
       const materialsMatch = (loan.materials || []).some(item => {
         const desc = getMaterialDescription(item.materialId).toLowerCase();
@@ -661,6 +951,8 @@ export function Loans({
         soldier.includes(q) ||
         dest.includes(q) ||
         course.includes(q) ||
+        deliveryResp.includes(q) ||
+        returnResp.includes(q) ||
         origin.includes(q) ||
         materialsMatch
       );
@@ -685,31 +977,44 @@ export function Loans({
             )}
           </div>
           <p className="text-muted-foreground">
-            Controle de carga temporária e retirada de múltiplos materiais para missões e instruções.
+            Controle de carga temporária, conferência item a item na devolução e registro de faltas com termo oficial.
           </p>
         </div>
 
-        <Button 
-          className="bg-[#B22222] hover:bg-[#B22222]/90 shadow-md"
-          onClick={() => {
-            setCreateFormData({
-              soldierName: '',
-              destination: '',
-              courseName: '',
-              expectedDuration: '',
-              observations: '',
-              sourceType: 'reserva',
-              sourceLocationId: ''
-            });
-            setSelectedItems([]);
-            setCurrentMaterialId('');
-            setCurrentMaterialQty(1);
-            setMaterialSearchQuery('');
-            setIsCreateOpen(true);
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" /> Registrar Retirada (Múltiplos Materiais)
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button 
+            variant="outline"
+            className="border-[#B22222] text-[#B22222] hover:bg-[#B22222] hover:text-white shadow-sm"
+            onClick={handleExportWithdrawalsReport}
+            disabled={isGeneratingPdf}
+            title="Exportar Relatório Geral de Retiradas em PDF"
+          >
+            <FileText className="mr-2 h-4 w-4" /> Relatório de Retiradas (PDF)
+          </Button>
+
+          <Button 
+            className="bg-[#B22222] hover:bg-[#B22222]/90 shadow-md"
+            onClick={() => {
+              setCreateFormData({
+                soldierName: '',
+                destination: '',
+                courseName: '',
+                expectedDuration: '',
+                observations: '',
+                deliveryResponsible: currentUser?.name || 'Encarregado da Reserva',
+                sourceType: 'reserva',
+                sourceLocationId: ''
+              });
+              setSelectedItems([]);
+              setCurrentMaterialId('');
+              setCurrentMaterialQty(1);
+              setMaterialSearchQuery('');
+              setIsCreateOpen(true);
+            }}
+          >
+            <Plus className="mr-2 h-4 w-4" /> Registrar Retirada (Múltiplos Materiais)
+          </Button>
+        </div>
       </div>
 
       {/* Barra de Filtro e Busca */}
@@ -718,14 +1023,14 @@ export function Loans({
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input 
-              placeholder="Buscar por militar, destino, curso, material ou local de retirada..."
+              placeholder="Buscar por militar, destino, curso, material, responsáveis..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 w-full"
             />
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto">
             <Button
               variant={statusFilter === 'todos' ? 'default' : 'outline'}
               size="sm"
@@ -741,6 +1046,15 @@ export function Loans({
               className={statusFilter === 'ativo' ? 'bg-orange-600 hover:bg-orange-700 text-white' : ''}
             >
               Ativos ({safeLoans.filter(l => l.status === 'ativo').length})
+            </Button>
+            <Button
+              variant={statusFilter === 'faltas' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setStatusFilter('faltas')}
+              className={statusFilter === 'faltas' ? 'bg-red-600 hover:bg-red-700 text-white' : 'border-red-200 text-red-700 hover:bg-red-50'}
+            >
+              <AlertTriangle className="mr-1 h-3.5 w-3.5" />
+              Com Faltas ({safeLoans.filter(l => Boolean(l.hasMissingItems)).length})
             </Button>
             <Button
               variant={statusFilter === 'devolvido' ? 'default' : 'outline'}
@@ -765,8 +1079,8 @@ export function Loans({
                 <TableHead>Materiais Retirados</TableHead>
                 <TableHead className="w-[130px]">Saída</TableHead>
                 <TableHead className="w-[140px]">Previsão / Retorno</TableHead>
-                <TableHead className="w-[100px] text-center">Status</TableHead>
-                <TableHead className="w-[180px] text-right">Ações</TableHead>
+                <TableHead className="w-[120px] text-center">Status</TableHead>
+                <TableHead className="w-[230px] text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -789,6 +1103,16 @@ export function Loans({
                         <span className="text-[11px] text-muted-foreground">
                           {loan.courseName || 'Missão Operacional'}
                         </span>
+                        {loan.deliveryResponsible && (
+                          <span className="text-[10px] text-zinc-500 mt-1 flex items-center gap-1" title="Responsável pela entrega do material">
+                            📦 Entregue por: <strong>{loan.deliveryResponsible}</strong>
+                          </span>
+                        )}
+                        {loan.returnResponsible && (
+                          <span className="text-[10px] text-emerald-700 flex items-center gap-1" title="Responsável pelo recebimento">
+                            ✓ Recebido por: <strong>{loan.returnResponsible}</strong>
+                          </span>
+                        )}
                       </div>
                     </TableCell>
 
@@ -811,27 +1135,53 @@ export function Loans({
                           <Badge variant="secondary" className="text-[10px] font-normal">
                             {loan.materials?.length || 0} tipo(s) • {totalItemUnits} un. total
                           </Badge>
+                          {loan.hasMissingItems && (
+                            <Badge variant="destructive" className="text-[10px] bg-red-600 font-semibold gap-1">
+                              <AlertTriangle size={10} /> Constam Faltas
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {(loan.materials || []).map((item, idx) => {
                             const desc = getMaterialDescription(item.materialId);
                             const mat = getMaterialDetails(item.materialId);
+                            
+                            // Verifica se este item especificamente tem faltas
+                            const missingItem = (loan.missingMaterials || []).find(m => m.materialId === item.materialId);
+                            const isItemMissing = Boolean(missingItem && missingItem.quantity > 0);
+
                             return (
                               <div 
                                 key={idx} 
-                                className="inline-flex items-center gap-1 text-xs bg-muted/60 px-2 py-0.5 rounded border border-border/50 text-foreground"
-                                title={`Código: ${item.materialId}`}
+                                className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border text-foreground ${
+                                  isItemMissing 
+                                    ? 'bg-red-50 border-red-300 text-red-900 font-semibold' 
+                                    : 'bg-muted/60 border-border/50'
+                                }`}
+                                title={`Código: ${item.materialId}${isItemMissing ? ` - FALTANDO ${missingItem?.quantity}` : ''}`}
                               >
-                                <span className="font-bold text-[#B22222]">{item.quantity}x</span>
+                                <span className={isItemMissing ? "font-bold text-red-600" : "font-bold text-[#B22222]"}>
+                                  {item.quantity}x
+                                </span>
                                 <span className="font-medium truncate max-w-[180px]">{desc}</span>
                                 {mat?.unit && <span className="text-[10px] text-muted-foreground">{mat.unit}</span>}
+                                {isItemMissing && (
+                                  <Badge className="bg-red-600 text-[9px] px-1 py-0 h-4 ml-0.5">
+                                    Falta {missingItem?.quantity}
+                                  </Badge>
+                                )}
                               </div>
                             );
                           })}
                         </div>
                         {loan.observations && (
                           <p className="text-[11px] text-muted-foreground italic truncate max-w-[320px] mt-1" title={loan.observations}>
-                            Obs: {loan.observations}
+                            Obs. Saída: {loan.observations}
+                          </p>
+                        )}
+                        {loan.missingObservations && (
+                          <p className="text-[11px] text-red-600 font-medium truncate max-w-[320px]" title={loan.missingObservations}>
+                            ⚠️ Faltas: {loan.missingObservations}
                           </p>
                         )}
                       </div>
@@ -843,13 +1193,26 @@ export function Loans({
 
                     <TableCell className="text-xs">
                       {loan.status === 'ativo' ? (
-                        <div className="flex flex-col">
-                          <span className="text-orange-600 font-semibold">{loan.expectedDuration || 'Previsto'}</span>
-                          <span className="text-[10px] text-muted-foreground">Pendente</span>
-                        </div>
+                        loan.hasMissingItems ? (
+                          <div className="flex flex-col">
+                            <span className="text-amber-700 font-bold flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3 text-amber-600" /> Carga c/ Faltas
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {loan.returnDate ? `Conf: ${format(new Date(loan.returnDate), "dd/MM/yy HH:mm", { locale: ptBR })}` : 'Em aberto'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col">
+                            <span className="text-orange-600 font-semibold">{loan.expectedDuration || 'Previsto'}</span>
+                            <span className="text-[10px] text-muted-foreground">Pendente devolução</span>
+                          </div>
+                        )
                       ) : (
                         <div className="flex flex-col">
-                          <span className="text-emerald-600 font-semibold">Devolvido</span>
+                          <span className={loan.hasMissingItems ? "text-red-600 font-bold" : "text-emerald-600 font-semibold"}>
+                            {loan.hasMissingItems ? 'Encerrado c/ Faltas' : 'Devolvido Integral'}
+                          </span>
                           <span className="text-[10px] text-muted-foreground">
                             {loan.returnDate ? format(new Date(loan.returnDate), "dd/MM/yy HH:mm", { locale: ptBR }) : '-'}
                           </span>
@@ -858,25 +1221,66 @@ export function Loans({
                     </TableCell>
 
                     <TableCell className="text-center">
-                      <Badge 
-                        variant={loan.status === 'ativo' ? 'destructive' : 'outline'}
-                        className={loan.status === 'ativo' ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'border-emerald-500 text-emerald-600 bg-emerald-50/50'}
-                      >
-                        {loan.status.toUpperCase()}
-                      </Badge>
+                      {loan.status === 'ativo' && !loan.hasMissingItems && (
+                        <Badge className="bg-blue-600 hover:bg-blue-700 text-white">
+                          ATIVO
+                        </Badge>
+                      )}
+                      {loan.status === 'ativo' && loan.hasMissingItems && (
+                        <Badge className="bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1 mx-auto w-fit">
+                          <AlertTriangle className="h-3 w-3" /> ABERTO (FALTAS)
+                        </Badge>
+                      )}
+                      {loan.status === 'devolvido' && !loan.hasMissingItems && (
+                        <Badge variant="outline" className="border-emerald-500 text-emerald-600 bg-emerald-50/50">
+                          DEVOLVIDO
+                        </Badge>
+                      )}
+                      {loan.status === 'devolvido' && loan.hasMissingItems && (
+                        <Badge className="bg-red-600 hover:bg-red-700 text-white flex items-center gap-1 mx-auto w-fit">
+                          <ShieldAlert className="h-3 w-3" /> ENCERRADO C/ FALTAS
+                        </Badge>
+                      )}
                     </TableCell>
 
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 text-xs text-blue-600 hover:bg-blue-50 hover:text-blue-700 border-blue-200"
+                          onClick={() => handleOpenReceipt(loan)}
+                          title="Imprimir Comprovante / Cautela de Retirada (PDF)"
+                        >
+                          <Printer className="mr-1 h-3.5 w-3.5" /> Retirada
+                        </Button>
+
+                        {(loan.status === 'devolvido' || loan.returnDate || loan.hasMissingItems) && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 text-xs text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 border-indigo-200"
+                            onClick={() => handleOpenReturnReceipt(loan)}
+                            title="Visualizar e Imprimir Ficha Oficial / Termo de Devolução (PDF)"
+                          >
+                            <FileText className="mr-1 h-3.5 w-3.5" /> Ficha Devolução
+                          </Button>
+                        )}
+
                         {loan.status === 'ativo' && (
                           <Button 
                             variant="outline" 
                             size="sm" 
-                            className="h-8 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200"
-                            onClick={() => handleReturn(loan)}
-                            title="Registrar devolução de todos os materiais"
+                            className={`h-8 text-xs ${
+                              loan.hasMissingItems 
+                                ? 'text-amber-700 hover:bg-amber-50 border-amber-300 font-semibold' 
+                                : 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-emerald-200'
+                            }`}
+                            onClick={() => handleOpenReturnModal(loan)}
+                            title="Conferir item a item e registrar termo de devolução"
                           >
-                            <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Devolver
+                            <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> 
+                            {loan.hasMissingItems ? 'Resolver Faltas' : 'Devolver'}
                           </Button>
                         )}
 
@@ -997,6 +1401,20 @@ export function Loans({
                       />
                     </div>
                     <div className="space-y-1.5">
+                      <Label htmlFor="deliveryResp" className="text-xs font-semibold">
+                        Responsável pela Entrega (Despacho) <span className="text-red-500">*</span>
+                      </Label>
+                      <Input 
+                        id="deliveryResp" 
+                        placeholder="Nome do militar/armeiro que realizou a entrega" 
+                        value={createFormData.deliveryResponsible} 
+                        onChange={(e) => setCreateFormData({ ...createFormData, deliveryResponsible: e.target.value })} 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
                       <Label htmlFor="duration" className="text-xs font-semibold">Duração Prevista</Label>
                       <Input 
                         id="duration" 
@@ -1005,17 +1423,15 @@ export function Loans({
                         onChange={(e) => setCreateFormData({ ...createFormData, expectedDuration: e.target.value })} 
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="obs" className="text-xs font-semibold">Observações Gerais</Label>
-                    <Textarea 
-                      id="obs" 
-                      placeholder="Detalhes adicionais sobre a saída ou estado dos equipamentos..." 
-                      rows={2}
-                      value={createFormData.observations} 
-                      onChange={(e) => setCreateFormData({ ...createFormData, observations: e.target.value })} 
-                    />
+                    <div className="space-y-1.5">
+                      <Label htmlFor="obs" className="text-xs font-semibold">Observações Gerais</Label>
+                      <Input 
+                        id="obs" 
+                        placeholder="Detalhes adicionais sobre a saída ou estado dos equipamentos..." 
+                        value={createFormData.observations} 
+                        onChange={(e) => setCreateFormData({ ...createFormData, observations: e.target.value })} 
+                      />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1371,14 +1787,56 @@ export function Loans({
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Responsável pela Entrega</Label>
+                  <Input 
+                    value={editFormData.deliveryResponsible} 
+                    placeholder="Quem entregou o material na saída"
+                    onChange={(e) => setEditFormData({ ...editFormData, deliveryResponsible: e.target.value })} 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Responsável pelo Recebimento (Devolução)</Label>
+                  <Input 
+                    value={editFormData.returnResponsible} 
+                    placeholder="Quem conferiu/recebeu na devolução"
+                    onChange={(e) => setEditFormData({ ...editFormData, returnResponsible: e.target.value })} 
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Observações</Label>
+                <Label className="text-xs font-semibold">Observações Gerais da Saída</Label>
                 <Textarea 
                   rows={2}
                   value={editFormData.observations} 
                   onChange={(e) => setEditFormData({ ...editFormData, observations: e.target.value })} 
                 />
               </div>
+
+              {(editFormData.status === 'devolvido' || editingLoan.hasMissingItems || editFormData.returnObservations || editFormData.missingObservations) && (
+                <div className="p-3 bg-muted/50 rounded-lg border space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-emerald-700">Termo / Observações Registradas na Devolução</Label>
+                    <Textarea 
+                      rows={2}
+                      value={editFormData.returnObservations} 
+                      placeholder="Observações ou termo geral inserido na devolução..."
+                      onChange={(e) => setEditFormData({ ...editFormData, returnObservations: e.target.value })} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold text-red-700">Observações de Materiais Faltantes</Label>
+                    <Textarea 
+                      rows={2}
+                      value={editFormData.missingObservations} 
+                      placeholder="Justificativa ou registro de itens faltantes..."
+                      onChange={(e) => setEditFormData({ ...editFormData, missingObservations: e.target.value })} 
+                    />
+                  </div>
+                </div>
+              )}
 
               <Separator />
 
@@ -1584,6 +2042,826 @@ export function Loans({
               <Button variant="destructive" onClick={handleConfirmDelete}>
                 Confirmar Exclusão
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL DE COMPROVANTE / CAUTELA DE RETIRADA (IMPRESSÃO E PDF) */}
+      {/* ========================================================================= */}
+      {isReceiptOpen && receiptLoan && (
+        <Dialog open={isReceiptOpen} onOpenChange={setIsReceiptOpen}>
+          <DialogContent className="max-w-4xl max-h-[92vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="p-4 bg-muted/30 border-b shrink-0 flex-row items-center justify-between">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-lg">
+                  <Printer className="h-5 w-5 text-[#B22222]" />
+                  Comprovante de Retirada de Materiais
+                </DialogTitle>
+                <DialogDescription>
+                  Cautela e termo de responsabilidade operacional emitido eletronicamente.
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2 pr-6">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handlePrintReceipt(receiptLoan)}
+                  disabled={isGeneratingPdf}
+                  className="gap-1.5"
+                >
+                  <Printer size={15} /> Imprimir Comprovante
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={() => handleDownloadReceiptPDF(receiptLoan)}
+                  disabled={isGeneratingPdf}
+                  className="bg-[#B22222] hover:bg-[#B22222]/90 text-white gap-1.5"
+                >
+                  <Download size={15} /> Baixar PDF
+                </Button>
+              </div>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-zinc-100 dark:bg-zinc-900 flex justify-center">
+              <div className="w-full max-w-3xl bg-white text-zinc-900 shadow-xl border border-border/80 rounded-lg p-6 sm:p-8 space-y-6 text-sm relative">
+                {/* Faixa decorativa #B22222 */}
+                <div className="absolute top-0 left-0 right-0 h-2 bg-[#B22222] rounded-t-lg" />
+
+                {/* Cabeçalho */}
+                <div className="flex items-start justify-between border-b pb-4">
+                  <div>
+                    <h3 className="font-extrabold text-base text-[#B22222] uppercase tracking-wide">
+                      {settings?.hierarchy?.matrizName || 'SALA DE ALTURA'}
+                    </h3>
+                    <h4 className="font-bold text-sm text-zinc-800">
+                      {settings?.unitName || 'CORPO DE BOMBEIROS'}
+                    </h4>
+                    <p className="text-xs text-zinc-500">
+                      {settings?.hierarchy?.subunitName || 'Companhia'} / {settings?.hierarchy?.postName || 'Posto Operacional'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="outline" className="font-mono text-xs font-bold border-[#B22222] text-[#B22222]">
+                      CAUTELA #{(receiptLoan.id || '').slice(-6).toUpperCase()}
+                    </Badge>
+                    <p className="text-[11px] text-zinc-500 mt-1">
+                      Data: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Título Oficial */}
+                <div className="text-center space-y-1">
+                  <h2 className="text-lg font-black uppercase tracking-wider text-zinc-900">
+                    Termo de Cautela e Retirada de Materiais
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    Documento de controle de carga operacional e responsabilidade individual
+                  </p>
+                </div>
+
+                {/* Quadro de Informações */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-zinc-50 border rounded-md text-xs">
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Militar Responsável:</span>
+                    <span className="font-bold text-[#B22222] text-sm">{receiptLoan.soldierName}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Destino / Finalidade:</span>
+                    <span className="font-semibold text-zinc-800">{receiptLoan.destination}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Curso / Missão:</span>
+                    <span className="text-zinc-800">{receiptLoan.courseName || 'Missão Operacional'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Local de Retirada (Origem):</span>
+                    <span className="font-semibold text-zinc-800">{getLocationDisplayName(receiptLoan.sourceLocationId)}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Responsável pela Entrega:</span>
+                    <span className="font-semibold text-zinc-800">{receiptLoan.deliveryResponsible || 'Encarregado da Reserva'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Data e Hora de Saída:</span>
+                    <span className="text-zinc-800">
+                      {receiptLoan.exitDate ? format(new Date(receiptLoan.exitDate), "dd/MM/yyyy HH:mm", { locale: ptBR }) : '-'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Previsão de Devolução:</span>
+                    <span className="text-zinc-800">{receiptLoan.expectedDuration || 'Conforme escala'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Status Atual:</span>
+                    <Badge variant={receiptLoan.status === 'ativo' ? 'default' : 'secondary'} className={receiptLoan.status === 'ativo' ? 'bg-orange-500 text-white' : 'bg-emerald-600 text-white'}>
+                      {receiptLoan.status === 'ativo' ? (receiptLoan.hasMissingItems ? 'ABERTO (COM FALTAS)' : 'CARGA ATIVA') : 'DEVOLVIDO'}
+                    </Badge>
+                  </div>
+                  {receiptLoan.returnDate && (
+                    <div>
+                      <span className="font-bold text-zinc-500 block">Data de Retorno:</span>
+                      <span className="text-zinc-800">
+                        {format(new Date(receiptLoan.returnDate), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tabela de Materiais */}
+                <div>
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-700 mb-2">
+                    Relação de Materiais Retirados
+                  </h4>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-[#B22222] text-white">
+                        <tr>
+                          <th className="p-2 text-center w-12 font-bold">Item</th>
+                          <th className="p-2 text-left font-bold">Descrição do Material</th>
+                          <th className="p-2 text-left w-32 font-bold">Categoria</th>
+                          <th className="p-2 text-center w-24 font-bold">Quantidade</th>
+                          <th className="p-2 text-center w-16 font-bold">Unidade</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-200">
+                        {(receiptLoan.materials || []).map((item, idx) => {
+                          const mat = getMaterialDetails(item.materialId);
+                          return (
+                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
+                              <td className="p-2 text-center font-bold text-zinc-500">{(idx + 1).toString().padStart(2, '0')}</td>
+                              <td className="p-2 font-bold text-zinc-900">{getMaterialDescription(item.materialId)}</td>
+                              <td className="p-2 text-zinc-600 uppercase text-[11px]">{mat?.category || 'Geral'}</td>
+                              <td className="p-2 text-center font-black text-[#B22222] text-sm">{item.quantity}</td>
+                              <td className="p-2 text-center text-zinc-600">{mat?.unit || 'un'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex justify-between items-center mt-2 px-1 text-xs text-zinc-600 font-semibold">
+                    <span>Total: {(receiptLoan.materials || []).length} tipo(s) de material</span>
+                    <span>Total de unidades: {(receiptLoan.materials || []).reduce((acc, curr) => acc + curr.quantity, 0)}</span>
+                  </div>
+                </div>
+
+                {/* Observações */}
+                {receiptLoan.observations && (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-md text-xs">
+                    <span className="font-bold text-amber-900 block mb-0.5">Observações:</span>
+                    <p className="text-zinc-700">{receiptLoan.observations}</p>
+                  </div>
+                )}
+
+                {/* Termo de Responsabilidade */}
+                <div className="p-3 bg-zinc-50 border rounded-md text-[11px] text-zinc-600 space-y-1">
+                  <span className="font-bold text-zinc-800 block uppercase tracking-wide">
+                    Termo de Compromisso e Responsabilidade:
+                  </span>
+                  <p>
+                    Declaro haver recebido nesta data o(s) material(is) discriminado(s) acima em perfeitas condições de funcionamento e conservação, comprometendo-me a zelar pela sua guarda, emprego adequado e devolvê-los no prazo estipulado. Em caso de extravio, dano ou perda decorrente de negligência ou uso indevido, assumo a responsabilidade nos termos regulamentares.
+                  </p>
+                </div>
+
+                {/* Linhas de Assinatura */}
+                <div className="grid grid-cols-2 gap-8 pt-8 text-center text-xs">
+                  <div>
+                    <div className="border-t border-zinc-400 w-4/5 mx-auto mb-1.5" />
+                    <p className="font-bold text-zinc-900 uppercase">{receiptLoan.soldierName}</p>
+                    <p className="text-[11px] text-zinc-500">Militar Responsável pela Retirada</p>
+                  </div>
+                  <div>
+                    <div className="border-t border-zinc-400 w-4/5 mx-auto mb-1.5" />
+                    <p className="font-bold text-zinc-900 uppercase">
+                      {receiptLoan.deliveryResponsible || 'Encarregado / Armeiro'}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">Responsável pela Liberação / Entrega</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="p-3 bg-muted/20 border-t flex items-center justify-between">
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Documento oficial gerado com numeração de página no padrão institucional.
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setIsReceiptOpen(false)}>
+                  Fechar
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={() => handleDownloadReceiptPDF(receiptLoan)}
+                  disabled={isGeneratingPdf}
+                  className="bg-[#B22222] hover:bg-[#B22222]/90 text-white gap-1.5"
+                >
+                  <Download size={15} /> Baixar PDF
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL DE DEVOLUÇÃO E CONFERÊNCIA ITEM A ITEM */}
+      {/* ========================================================================= */}
+      {isReturnModalOpen && returningLoan && (
+        <Dialog open={isReturnModalOpen} onOpenChange={setIsReturnModalOpen}>
+          <DialogContent className="max-w-4xl max-h-[94vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="p-4 bg-muted/40 border-b shrink-0 flex-row items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-emerald-600 rounded-lg text-white shadow-sm">
+                  <ClipboardCheck size={22} />
+                </div>
+                <div>
+                  <DialogTitle className="text-lg sm:text-xl font-bold">
+                    Termo e Conferência de Devolução
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Confira item a item. Caso haja faltas, a carga pode permanecer aberta ou ser encerrada com termo de pendências.
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+              {/* Resumo da Carga Retirada */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-3.5 bg-muted/40 rounded-lg border text-xs">
+                <div>
+                  <span className="text-muted-foreground block font-medium">Militar:</span>
+                  <span className="font-bold text-foreground text-sm">{returningLoan.soldierName}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block font-medium">Destino / Finalidade:</span>
+                  <span className="font-semibold text-foreground">{returningLoan.destination}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block font-medium">Local de Origem:</span>
+                  <span className="font-semibold text-foreground">{getLocationDisplayName(returningLoan.sourceLocationId)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block font-medium">Entregue por:</span>
+                  <span className="font-semibold text-foreground">{returningLoan.deliveryResponsible || 'Encarregado da Reserva'}</span>
+                </div>
+              </div>
+
+              {/* Responsável pelo Recebimento */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">
+                    Responsável pelo Recebimento / Devolução <span className="text-red-500">*</span>
+                  </Label>
+                  <Input 
+                    value={returnFormResponsible}
+                    onChange={(e) => setReturnFormResponsible(e.target.value)}
+                    placeholder="Nome do militar ou recebedor"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold">
+                    Data e Hora da Conferência
+                  </Label>
+                  <Input 
+                    value={format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    disabled
+                    className="bg-muted text-muted-foreground"
+                  />
+                </div>
+              </div>
+
+              {/* Conferência Item a Item */}
+              <Card>
+                <CardHeader className="py-3 px-4 bg-muted/20 border-b flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-bold flex items-center gap-2">
+                      <Package size={16} className="text-emerald-600" />
+                      Conferência Item a Item dos Materiais Retirados
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Selecione e ajuste a quantidade exata de cada item devolvido.
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                      onClick={() => {
+                        setReturnItemsState(returnItemsState.map(i => ({ ...i, returnedQuantity: i.totalQuantity })));
+                      }}
+                    >
+                      <Check size={13} className="mr-1" /> Devolver Todos 100%
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs text-zinc-600 hover:bg-zinc-100"
+                      onClick={() => {
+                        setReturnItemsState(returnItemsState.map(i => ({ ...i, returnedQuantity: 0 })));
+                      }}
+                    >
+                      <Minus size={13} className="mr-1" /> Zerar Todos
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 divide-y">
+                  {returnItemsState.map((item, idx) => {
+                    const isMissing = item.returnedQuantity < item.totalQuantity;
+                    const missingQty = item.totalQuantity - item.returnedQuantity;
+
+                    return (
+                      <div 
+                        key={item.materialId}
+                        className={`p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                          isMissing ? 'bg-red-50/60 dark:bg-red-950/20' : 'hover:bg-muted/20'
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-muted-foreground font-semibold">
+                              #{(idx + 1).toString().padStart(2, '0')}
+                            </span>
+                            <span className="font-bold text-sm text-foreground">{item.name}</span>
+                            <Badge variant="outline" className="text-[10px] uppercase">
+                              {item.category}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-3">
+                            <span>Qtd. Retirada: <strong>{item.totalQuantity} {item.unit}</strong></span>
+                            <span>•</span>
+                            <span className={isMissing ? "text-red-600 font-bold" : "text-emerald-600 font-semibold"}>
+                              Devolvendo: <strong>{item.returnedQuantity} {item.unit}</strong>
+                            </span>
+                            {isMissing && (
+                              <Badge className="bg-red-600 text-white text-[10px] px-1.5 py-0 h-4 font-bold">
+                                Faltando: {missingQty} {item.unit}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Controles de Quantidade Item */}
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex items-center border rounded-md bg-background overflow-hidden shadow-xs">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-none hover:bg-muted"
+                              disabled={item.returnedQuantity <= 0}
+                              onClick={() => {
+                                setReturnItemsState(returnItemsState.map((it, i) => 
+                                  i === idx ? { ...it, returnedQuantity: Math.max(0, it.returnedQuantity - 1) } : it
+                                ));
+                              }}
+                            >
+                              <Minus size={14} />
+                            </Button>
+                            <Input 
+                              type="number"
+                              min={0}
+                              max={item.totalQuantity}
+                              className="w-14 h-8 text-center border-0 rounded-none focus-visible:ring-0 font-bold text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              value={item.returnedQuantity}
+                              onChange={(e) => {
+                                const val = Math.min(item.totalQuantity, Math.max(0, parseInt(e.target.value) || 0));
+                                setReturnItemsState(returnItemsState.map((it, i) => 
+                                  i === idx ? { ...it, returnedQuantity: val } : it
+                                ));
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-none hover:bg-muted"
+                              disabled={item.returnedQuantity >= item.totalQuantity}
+                              onClick={() => {
+                                setReturnItemsState(returnItemsState.map((it, i) => 
+                                  i === idx ? { ...it, returnedQuantity: Math.min(it.totalQuantity, it.returnedQuantity + 1) } : it
+                                ));
+                              }}
+                            >
+                              <Plus size={14} />
+                            </Button>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant={item.returnedQuantity === item.totalQuantity ? 'default' : 'outline'}
+                            size="sm"
+                            className={`h-8 text-xs ${
+                              item.returnedQuantity === item.totalQuantity 
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                                : 'text-zinc-600'
+                            }`}
+                            onClick={() => {
+                              const newQty = item.returnedQuantity === item.totalQuantity ? 0 : item.totalQuantity;
+                              setReturnItemsState(returnItemsState.map((it, i) => 
+                                i === idx ? { ...it, returnedQuantity: newQty } : it
+                              ));
+                            }}
+                          >
+                            {item.returnedQuantity === item.totalQuantity ? (
+                              <><Check size={14} className="mr-1" /> Integral</>
+                            ) : (
+                              'Total'
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              {/* Status da Conferência e Advertência de Faltas */}
+              {(() => {
+                const missingList = returnItemsState.filter(i => i.returnedQuantity < i.totalQuantity);
+                const hasMissing = missingList.length > 0;
+
+                if (!hasMissing) {
+                  return (
+                    <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center gap-3">
+                      <div className="p-2 bg-emerald-600 text-white rounded-full">
+                        <Check size={16} />
+                      </div>
+                      <div className="flex-1 text-xs">
+                        <p className="font-bold text-emerald-800 dark:text-emerald-300">
+                          Conferência 100% Conforme
+                        </p>
+                        <p className="text-emerald-700 dark:text-emerald-400">
+                          Todos os itens foram devolvidos em suas quantidades integrais. O processo será baixado regularmente.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="p-4 bg-red-50 dark:bg-red-950/30 border-2 border-red-300 dark:border-red-800 rounded-lg space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-red-600 text-white rounded-lg shrink-0 mt-0.5">
+                        <AlertTriangle size={18} />
+                      </div>
+                      <div className="flex-1 text-xs space-y-1">
+                        <p className="font-extrabold text-red-900 dark:text-red-200 text-sm">
+                          Atenção: Conferência com Materiais Faltantes ({missingList.length} item(ns) pendente(s))
+                        </p>
+                        <p className="text-red-700 dark:text-red-300">
+                          Identificou-se divergência física na devolução. Conforme regulamento, você pode optar por manter a carga aberta aguardando a devolução restante ou encerrar a carga registrando o termo de faltas.
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {missingList.map((m, idx) => (
+                            <Badge key={idx} variant="destructive" className="bg-red-600 text-xs py-0.5 font-bold">
+                              {m.totalQuantity - m.returnedQuantity}x {m.name}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1">
+                      <Label className="text-xs font-bold text-red-800 dark:text-red-300 flex items-center gap-1.5">
+                        <AlertCircle size={14} /> Observação Obrigatória de Materiais Faltantes / Justificativa *
+                      </Label>
+                      <Textarea 
+                        rows={2}
+                        value={returnFormMissingObs}
+                        onChange={(e) => setReturnFormMissingObs(e.target.value)}
+                        placeholder="Descreva detalhadamente o motivo da ausência dos materiais (ex: extraviado em campo, permaneceu na viatura, quebra durante treinamento)..."
+                        className="border-red-300 focus-visible:ring-red-400 text-xs bg-white dark:bg-zinc-900"
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Termo e Observações Gerais da Devolução */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  Termo / Observações Gerais da Devolução
+                </Label>
+                <Textarea 
+                  rows={2}
+                  value={returnFormObservations}
+                  onChange={(e) => setReturnFormObservations(e.target.value)}
+                  placeholder="Observações complementares sobre o estado de conservação, limpeza ou inspeção dos materiais..."
+                  className="text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Rodapé com Ações Inteligentes */}
+            <DialogFooter className="p-4 bg-muted/30 border-t flex flex-col sm:flex-row items-center justify-between gap-2 shrink-0">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setIsReturnModalOpen(false)}
+              >
+                Cancelar
+              </Button>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto">
+                {(() => {
+                  const hasMissing = returnItemsState.some(i => i.returnedQuantity < i.totalQuantity);
+
+                  if (!hasMissing) {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={() => handleConfirmReturn('regular')}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-sm"
+                      >
+                        <CheckCircle2 size={16} /> Confirmar Devolução Integral
+                      </Button>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleConfirmReturn('keep_open_missing')}
+                        className="border-amber-400 text-amber-800 hover:bg-amber-50 dark:text-amber-200 gap-1.5 font-bold"
+                        title="Dá entrada nos itens devolvidos, mas mantém a carga em aberto com termo de faltas"
+                      >
+                        <RotateCcw size={15} /> Manter Carga Aberta (c/ Faltas)
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleConfirmReturn('close_missing')}
+                        className="bg-red-600 hover:bg-red-700 text-white gap-1.5 font-bold shadow-sm"
+                        title="Encerra o empréstimo gerando ficha oficial com registro de materiais faltantes"
+                      >
+                        <ShieldAlert size={15} /> Encerrar Carga (Gerando Faltas)
+                      </Button>
+                    </>
+                  );
+                })()}
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL DE FICHA OFICIAL / TERMO DE DEVOLUÇÃO (PREVIEW, IMPRESSÃO E PDF) */}
+      {/* ========================================================================= */}
+      {isReturnReceiptModalOpen && returnReceiptLoan && (
+        <Dialog open={isReturnReceiptModalOpen} onOpenChange={setIsReturnReceiptModalOpen}>
+          <DialogContent className="max-w-4xl max-h-[92vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="p-4 bg-muted/30 border-b shrink-0 flex-row items-center justify-between">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-lg">
+                  <FileCheck className={`h-5 w-5 ${returnReceiptLoan.hasMissingItems ? 'text-red-600' : 'text-emerald-600'}`} />
+                  Termo Oficial de Devolução e Conferência
+                </DialogTitle>
+                <DialogDescription>
+                  Ficha oficial de conferência registrada no acervo da Sala de Altura.
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2 pr-6">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handlePrintReturnReceipt(returnReceiptLoan)}
+                  disabled={isGeneratingPdf}
+                  className="gap-1.5"
+                >
+                  <Printer size={15} /> Imprimir Ficha
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={() => handleDownloadReturnReceiptPDF(returnReceiptLoan)}
+                  disabled={isGeneratingPdf}
+                  className={`${returnReceiptLoan.hasMissingItems ? 'bg-red-700 hover:bg-red-800' : 'bg-emerald-700 hover:bg-emerald-800'} text-white gap-1.5`}
+                >
+                  <Download size={15} /> Baixar PDF
+                </Button>
+              </div>
+            </DialogHeader>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-zinc-100 dark:bg-zinc-900 flex justify-center">
+              <div className="w-full max-w-3xl bg-white text-zinc-900 shadow-xl border border-border/80 rounded-lg p-6 sm:p-8 space-y-6 text-sm relative">
+                {/* Faixa decorativa superior */}
+                <div className={`absolute top-0 left-0 right-0 h-2 rounded-t-lg ${returnReceiptLoan.hasMissingItems ? 'bg-red-600' : 'bg-emerald-600'}`} />
+
+                {/* Cabeçalho */}
+                <div className="flex items-start justify-between border-b pb-4">
+                  <div>
+                    <h3 className={`font-extrabold text-base uppercase tracking-wide ${returnReceiptLoan.hasMissingItems ? 'text-red-700' : 'text-emerald-700'}`}>
+                      {settings?.hierarchy?.matrizName || 'SALA DE ALTURA'}
+                    </h3>
+                    <h4 className="font-bold text-sm text-zinc-800">
+                      {settings?.unitName || 'CORPO DE BOMBEIROS'}
+                    </h4>
+                    <p className="text-xs text-zinc-500">
+                      {settings?.hierarchy?.subunitName || 'Companhia'} / {settings?.hierarchy?.postName || 'Posto Operacional'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <Badge variant="outline" className={`font-mono text-xs font-bold ${returnReceiptLoan.hasMissingItems ? 'border-red-600 text-red-600' : 'border-emerald-600 text-emerald-600'}`}>
+                      FICHA DEV-{(returnReceiptLoan.id || '').slice(-6).toUpperCase()}
+                    </Badge>
+                    <p className="text-[11px] text-zinc-500 mt-1">
+                      Conferência: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Título Oficial */}
+                <div className="text-center space-y-1">
+                  <h2 className="text-lg font-black uppercase tracking-wider text-zinc-900">
+                    Termo de Devolução e Conferência de Materiais
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    {returnReceiptLoan.hasMissingItems 
+                      ? 'FICHA DE RECEBIMENTO PARCIAL / REGISTRO DE MATERIAIS FALTANTES'
+                      : 'FICHA REGULAR DE BAIXA E CONFERÊNCIA DE CAUTELA OPERACIONAL'}
+                  </p>
+                </div>
+
+                {/* Quadro de Informações da Devolução */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-zinc-50 border rounded-md text-xs">
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Militar Devolvente:</span>
+                    <span className="font-bold text-zinc-900 text-sm uppercase">{returnReceiptLoan.soldierName}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Destino / Finalidade:</span>
+                    <span className="font-semibold text-zinc-800">{returnReceiptLoan.destination}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Local de Retirada (Origem):</span>
+                    <span className="font-semibold text-zinc-800">{getLocationDisplayName(returnReceiptLoan.sourceLocationId)}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Resp. pela Entrega (Saída):</span>
+                    <span className="font-semibold text-zinc-800">{returnReceiptLoan.deliveryResponsible || 'Encarregado da Reserva'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Resp. pelo Recebimento (Devolução):</span>
+                    <span className="font-bold text-emerald-800">{returnReceiptLoan.returnResponsible || 'Armeiro / Recebedor'}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Data/Hora Saída:</span>
+                    <span className="text-zinc-800">
+                      {returnReceiptLoan.exitDate ? format(new Date(returnReceiptLoan.exitDate), "dd/MM/yyyy HH:mm", { locale: ptBR }) : '-'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Data da Devolução:</span>
+                    <span className="text-zinc-800 font-semibold">
+                      {returnReceiptLoan.returnDate ? format(new Date(returnReceiptLoan.returnDate), "dd/MM/yyyy HH:mm", { locale: ptBR }) : format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-zinc-500 block">Situação da Conferência:</span>
+                    <Badge variant={returnReceiptLoan.hasMissingItems ? 'destructive' : 'default'} className={returnReceiptLoan.hasMissingItems ? 'bg-red-600 text-white font-bold' : 'bg-emerald-600 text-white font-bold'}>
+                      {returnReceiptLoan.hasMissingItems ? 'COM MATERIAIS FALTANTES' : '100% REGULAR / DEVOLVIDO'}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Tabela de Materiais Conferidos Item a Item */}
+                <div>
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-700 mb-2">
+                    Conferência Item a Item
+                  </h4>
+                  <div className="border rounded-md overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className={returnReceiptLoan.hasMissingItems ? 'bg-red-700 text-white' : 'bg-emerald-700 text-white'}>
+                        <tr>
+                          <th className="p-2 text-center w-10 font-bold">Item</th>
+                          <th className="p-2 text-left font-bold">Descrição do Material</th>
+                          <th className="p-2 text-center w-20 font-bold">Retirado</th>
+                          <th className="p-2 text-center w-20 font-bold">Devolvido</th>
+                          <th className="p-2 text-center w-20 font-bold">Faltando</th>
+                          <th className="p-2 text-center w-28 font-bold">Situação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-200">
+                        {(() => {
+                          const retMap = new Map<string, number>();
+                          (returnReceiptLoan.returnedMaterials || []).forEach(rm => retMap.set(rm.materialId, rm.quantity));
+                          
+                          const missMap = new Map<string, number>();
+                          (returnReceiptLoan.missingMaterials || []).forEach(mm => missMap.set(mm.materialId, mm.quantity));
+
+                          return (returnReceiptLoan.materials || []).map((item, idx) => {
+                            const mat = getMaterialDetails(item.materialId);
+                            const totalRet = item.quantity;
+                            const hasExplicitRecord = retMap.has(item.materialId) || missMap.has(item.materialId);
+                            
+                            const devQty = hasExplicitRecord 
+                              ? (retMap.get(item.materialId) || 0)
+                              : (returnReceiptLoan.hasMissingItems ? 0 : totalRet);
+                            
+                            const faltQty = hasExplicitRecord 
+                              ? (missMap.get(item.materialId) ?? Math.max(0, totalRet - devQty))
+                              : (returnReceiptLoan.hasMissingItems ? totalRet : 0);
+                            
+                            const isMissing = faltQty > 0;
+
+                            return (
+                              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
+                                <td className="p-2 text-center font-bold text-zinc-500">{(idx + 1).toString().padStart(2, '0')}</td>
+                                <td className="p-2 font-bold text-zinc-900">{getMaterialDescription(item.materialId)}</td>
+                                <td className="p-2 text-center font-medium text-zinc-700">{totalRet} {mat?.unit || 'un'}</td>
+                                <td className="p-2 text-center font-bold text-emerald-700">{devQty} {mat?.unit || 'un'}</td>
+                                <td className="p-2 text-center font-bold text-red-600">{faltQty} {mat?.unit || 'un'}</td>
+                                <td className="p-2 text-center">
+                                  {isMissing ? (
+                                    <span className="text-red-700 font-bold text-[11px] bg-red-100 px-2 py-0.5 rounded">
+                                      FALTA ({faltQty})
+                                    </span>
+                                  ) : (
+                                    <span className="text-emerald-700 font-bold text-[11px] bg-emerald-100 px-2 py-0.5 rounded">
+                                      REGULAR
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Observações da Devolução */}
+                {returnReceiptLoan.returnObservations && (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-md text-xs">
+                    <span className="font-bold text-amber-900 block mb-0.5">Termo / Observações da Devolução:</span>
+                    <p className="text-zinc-700">{returnReceiptLoan.returnObservations}</p>
+                  </div>
+                )}
+
+                {/* Observações de Faltas */}
+                {returnReceiptLoan.missingObservations && (
+                  <div className="p-3 bg-red-50 border border-red-300 rounded-md text-xs">
+                    <span className="font-bold text-red-900 block mb-0.5">Registro de Materiais Faltantes / Pendências:</span>
+                    <p className="text-red-800 font-medium">{returnReceiptLoan.missingObservations}</p>
+                  </div>
+                )}
+
+                {/* Termo de Declaração */}
+                <div className="p-3 bg-zinc-50 border rounded-md text-[11px] text-zinc-600 space-y-1">
+                  <span className="font-bold text-zinc-800 block uppercase tracking-wide">
+                    Declaração de Devolução e Conformidade:
+                  </span>
+                  <p>
+                    {returnReceiptLoan.hasMissingItems
+                      ? 'Certifico que os materiais devolvidos foram devidamente conferidos e reintegrados ao acervo, constando as pendências e faltas discriminadas acima. O militar responsável fica ciente das pendências registradas nesta ficha para as devidas providências administrativas regulamentares.'
+                      : 'Certifico haver recebido e conferido integralmente todos os materiais listados neste documento em perfeita conformidade, dando baixa total na respectiva carga e cautela operacional.'}
+                  </p>
+                </div>
+
+                {/* Linhas de Assinatura */}
+                <div className="grid grid-cols-2 gap-8 pt-6 text-center text-xs">
+                  <div>
+                    <div className="border-t border-zinc-400 w-4/5 mx-auto mb-1.5" />
+                    <p className="font-bold text-zinc-900 uppercase">{returnReceiptLoan.soldierName}</p>
+                    <p className="text-[11px] text-zinc-500">Militar Devolvente</p>
+                  </div>
+                  <div>
+                    <div className="border-t border-zinc-400 w-4/5 mx-auto mb-1.5" />
+                    <p className="font-bold text-zinc-900 uppercase">
+                      {returnReceiptLoan.returnResponsible || 'Armeiro / Recebedor'}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">Responsável pelo Recebimento / Conferência</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="p-3 bg-muted/20 border-t flex items-center justify-between">
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Ficha oficial arquivada no histórico de cargas e devoluções.
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setIsReturnReceiptModalOpen(false)}>
+                  Fechar
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={() => handleDownloadReturnReceiptPDF(returnReceiptLoan)}
+                  disabled={isGeneratingPdf}
+                  className={`${returnReceiptLoan.hasMissingItems ? 'bg-red-700 hover:bg-red-800' : 'bg-emerald-700 hover:bg-emerald-800'} text-white gap-1.5`}
+                >
+                  <Download size={15} /> Baixar PDF
+                </Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>

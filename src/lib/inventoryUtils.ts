@@ -14,7 +14,11 @@ export const getActiveLoansQuantity = (materialId: string, loans: Loan[], fromRe
     .filter(l => l.status === 'ativo' && (fromReservaOnly ? !l.sourceLocationId : true))
     .reduce((acc, l) => {
       const item = l.materials.find(m => m.materialId === materialId);
-      return acc + (item ? item.quantity : 0);
+      if (!item) return acc;
+      const returnedItem = (l.returnedMaterials || []).find(rm => rm.materialId === materialId);
+      const returnedQty = returnedItem ? returnedItem.quantity : 0;
+      const pendingQty = Math.max(0, item.quantity - returnedQty);
+      return acc + pendingQty;
     }, 0);
 };
 
